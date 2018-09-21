@@ -117,6 +117,17 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     resp.Send(m)
   })
 
+  backend.GET("/Contests/:contestId/Team", func(c *gin.Context) {
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    m := model.New(db)
+    contestId := c.Param("contestId")
+    err := m.ViewUserContestTeam(userId, contestId)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
 /*
   // Authorized group (uses gin.BasicAuth() middleware)
   // Same as:
