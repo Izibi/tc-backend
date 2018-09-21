@@ -2,6 +2,7 @@
 package model
 
 import (
+  "fmt"
   "github.com/go-errors/errors"
   "github.com/golang-collections/collections/set"
   j "tezos-contests.izibi.com/backend/jase"
@@ -47,19 +48,19 @@ type Contest struct {
 }
 
 func (m *Model) loadContestRow(row IRow) (*Contest, error) {
-  var contest Contest
-  err := row.StructScan(&contest)
+  var res Contest
+  err := row.StructScan(&res)
   if err != nil { return nil, errors.Wrap(err, 0) }
   view := j.Object()
-  view.Prop("id", j.String(contest.Id))
-  view.Prop("title", j.String(contest.Title))
-  view.Prop("description", j.String(contest.Description))
-  view.Prop("logoUrl", j.String(contest.Logo_url))
-  view.Prop("taskId", j.String(contest.Task_id))
-  view.Prop("startsAt", j.String(contest.Starts_at))
-  view.Prop("endsAt", j.String(contest.Ends_at))
-  m.Add("contests."+contest.Id, view)
-  return &contest, nil
+  view.Prop("id", j.String(res.Id))
+  view.Prop("title", j.String(res.Title))
+  view.Prop("description", j.String(res.Description))
+  view.Prop("logoUrl", j.String(res.Logo_url))
+  view.Prop("taskId", j.String(res.Task_id))
+  view.Prop("startsAt", j.String(res.Starts_at))
+  view.Prop("endsAt", j.String(res.Ends_at))
+  m.Add(fmt.Sprintf("contests.%s", res.Id), view)
+  return &res, nil
 }
 
 /*** load from tasks ***/
@@ -71,12 +72,12 @@ type Task struct {
 }
 
 func (m *Model) loadTaskRow(row IRow) (*Task, error) {
-  var task Task
-  err := row.StructScan(&task)
+  var res Task
+  err := row.StructScan(&res)
   if err != nil { return nil, errors.Wrap(err, 0) }
   view := j.Object()
-  view.Prop("id", j.String(task.Id))
-  view.Prop("title", j.String(task.Title))
-  m.Add("tasks."+task.Id, view)
-  return &task, nil
+  view.Prop("id", j.String(res.Id))
+  view.Prop("title", j.String(res.Title))
+  m.Add(fmt.Sprintf("tasks.%s", res.Id), view)
+  return &res, nil
 }
