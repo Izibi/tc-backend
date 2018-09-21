@@ -88,3 +88,18 @@ ALTER TABLE contests ADD CONSTRAINT fk_contests__task_id
 ALTER TABLE contests ADD CONSTRAINT fk_contests__required_badge_id
     FOREIGN KEY ix_contests__required_badge_id (required_badge_id) REFERENCES badges(id) ON DELETE CASCADE;
 
+CREATE TABLE task_resources (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    task_id BIGINT NOT NULL,
+    rank INT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    url TEXT NOT NULL,
+    html TEXT NOT NULL,
+    PRIMARY KEY (id)
+) CHARACTER SET utf8 ENGINE=InnoDB;
+CREATE INDEX ix_task_resources__task_id_rank USING btree ON task_resources (task_id, rank);
+
+ALTER TABLE task_resources ADD CONSTRAINT fk_task_resources__task_id
+    FOREIGN KEY ix_task_resources__task_id (task_id) REFERENCES tasks(id) ON DELETE CASCADE;
+

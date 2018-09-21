@@ -81,3 +81,31 @@ func (m *Model) loadTaskRow(row IRow) (*Task, error) {
   m.Add(fmt.Sprintf("tasks.%s", res.Id), view)
   return &res, nil
 }
+
+/*** load from task_resources ***/
+
+type TaskResource struct {
+  Id string
+  Task_id string
+  Rank string
+  Title string
+  Description string
+  Url string
+  Html string
+}
+
+func (m *Model) loadTaskResourceRow(row IRow) (*TaskResource, error) {
+  var res TaskResource
+  err := row.StructScan(&res)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  view := j.Object()
+  view.Prop("id", j.String(res.Id))
+  view.Prop("taskId", j.String(res.Task_id))
+  view.Prop("rank", j.String(res.Rank))
+  view.Prop("title", j.String(res.Title))
+  view.Prop("description", j.String(res.Description))
+  view.Prop("url", j.String(res.Url))
+  view.Prop("html", j.String(res.Html))
+  m.Add(fmt.Sprintf("taskResources.%s", res.Id), view)
+  return &res, nil
+}

@@ -147,9 +147,8 @@ func (m *Model) ViewUserContest(userId string, contestId string) error {
   m.tasks.Need(contest.Task_id)
   err = m.tasks.Load(m.loadTasks)
   if err != nil { return errors.Wrap(err, 0) }
-
-  // model.loadTaskResources(contest.TaskId)
-  // TODO: load task resources
+  err = m.loadTaskResources(contest.Task_id)
+  if err != nil { return errors.Wrap(err, 0) }
 
   return nil
 }
@@ -162,6 +161,18 @@ func (model *Model) loadTasks(ids []string) error {
   defer rows.Close()
   for rows.Next() {
     _, err = model.loadTaskRow(rows)
+    if err != nil { return err }
+  }
+  return nil
+}
+
+func (model *Model) loadTaskResources(taskId string) error {
+  rows, err := model.db.Queryx(
+    `SELECT * FROM task_resources WHERE task_id = ? ORDER BY rank`, taskId)
+  if err != nil { return errors.Wrap(err, 0) }
+  defer rows.Close()
+  for rows.Next() {
+    _, err = model.loadTaskResourceRow(rows)
     if err != nil { return err }
   }
   return nil
