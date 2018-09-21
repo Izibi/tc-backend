@@ -36,13 +36,18 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
   }
 
   r.GET("/User", func (c *gin.Context) {
+
+    resp := utils.NewResponse(c)
+    m := model.New(db)
     session := sessions.Default(c)
     val := session.Get("userId")
-    if val == nil {
-      c.JSON(http.StatusOK, nil)
-    } else {
-      c.JSON(http.StatusOK, gin.H{"userId": val.(string)})
+    if val != nil {
+      userId := val.(string)
+      _, err := m.ViewUser(userId)
+      if err != nil { resp.Error(err); return }
+      m.Set("userId", j.String(userId))
     }
+    resp.Send(m)
   })
 
   r.GET("/Login", func (c *gin.Context) {
