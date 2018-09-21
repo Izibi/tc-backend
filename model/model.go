@@ -3,12 +3,13 @@ package model
 
 import (
   "database/sql"
+  "github.com/jmoiron/sqlx"
   _ "github.com/go-sql-driver/mysql"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
 type Model struct {
-  db *sql.DB
+  db *sqlx.DB
   result j.IObject
   entities map[string]j.Value
   tasks LoadSet
@@ -16,7 +17,7 @@ type Model struct {
 
 func New (db *sql.DB) *Model {
   model := new(Model)
-  model.db = db
+  model.db = sqlx.NewDb(db, "mysql")
   model.result = j.Object()
   model.entities = make(map[string]j.Value)
   return model

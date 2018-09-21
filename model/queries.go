@@ -18,6 +18,7 @@ type UserProfile interface {
 
 type IRow interface {
   Scan(dest ...interface{}) error
+  StructScan(dest interface{}) error
 }
 
 func (model *Model) FindUserByForeignId(foreignId string) (string, error) {
@@ -105,9 +106,9 @@ func (model *Model) ViewUser(id string) (j.Value, error) {
   return j.String(id), nil
 }
 
-func (model *Model) ViewUserContests(userId string) (j.Value, error) {
+func (m *Model) ViewUserContests(userId string) (j.Value, error) {
   var err error
-  rows, err := model.db.Query(
+  rows, err := m.db.Queryx(
     `select
       c.id, c.title, c.description, c.logo_url, c.task_id, c.is_registration_open,
       c.starts_at, c.ends_at
@@ -117,34 +118,38 @@ func (model *Model) ViewUserContests(userId string) (j.Value, error) {
   defer rows.Close()
   contestIds := j.Array()
   for rows.Next() {
-    id, err := model.loadContestRow(rows)
+    contest, err := m.loadContestRow(rows)
     if err != nil { return j.Null, errors.Wrap(err, 0) }
-    contestIds.Item(j.String(id))
+    contestIds.Item(j.String(contest.Id))
+    m.tasks.Need(contest.Task_id)
   }
-  err = model.tasks.Load(model.loadTasks)
+  err = m.tasks.Load(m.loadTasks)
   if err != nil { return j.Null, errors.Wrap(err, 0) }
   return contestIds, nil
 }
 
-
-func (model *Model) ViewUserContest(userId string, contestId string) error {
+func (m *Model) ViewUserContest(userId string, contestId string) error {
   var err error
   /* verify user has access to contest */
-  row := model.db.QueryRow(
+  row := m.db.QueryRow(
     `select count(c.id) from user_badges ub, contests c
      where c.id = ? and ub.user_id = ? and ub.badge_id = c.required_badge_id`, contestId, userId)
   var count int
   err = row.Scan(&count)
-  if err != nil { errors.Wrap(err, 0) }
-  if count != 1 { errors.Errorf("access denied") }
+  if err != nil { return errors.Wrap(err, 0) }
+  if count != 1 { return errors.Errorf("access denied") }
 
   /* load contest, task */
-  _, err = model.loadContestRow(model.db.QueryRow(`select
+  contest, err := m.loadContestRow(m.db.QueryRowx(`select
     id, title, description, logo_url, task_id, is_registration_open,
-    starts_at, ends_at from contests where c.id = ?`, contestId))
-  if err != nil { errors.Wrap(err, 0) }
-  err = model.tasks.Load(model.loadTasks)
-  if err != nil { errors.Wrap(err, 0) }
+    starts_at, ends_at from contests where id = ?`, contestId))
+  if err != nil { return errors.Wrap(err, 0) }
+  m.tasks.Need(contest.Task_id)
+  err = m.tasks.Load(m.loadTasks)
+  if err != nil { return errors.Wrap(err, 0) }
+
+  // model.loadTaskResources(contest.TaskId)
+  // TODO: load task resources
 
   return nil
 }
@@ -152,7 +157,7 @@ func (model *Model) ViewUserContest(userId string, contestId string) error {
 func (model *Model) loadTasks(ids []string) error {
   query, args, err := sqlx.In(`select id, title from tasks where id in (?)`, ids)
   if err != nil { return errors.Wrap(err, 0) }
-  rows, err := model.db.Query(query, args...)
+  rows, err := model.db.Queryx(query, args...)
   if err != nil { return errors.Wrap(err, 0) }
   defer rows.Close()
   for rows.Next() {

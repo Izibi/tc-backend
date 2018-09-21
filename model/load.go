@@ -32,31 +32,51 @@ func (s *LoadSet) Load(loader func (ids []string) error) error {
   return nil
 }
 
-func (m *Model) loadContestRow(row IRow) (string, error) {
-  var id, title, description, logoUrl, taskId, startsAt, endsAt string
-  var isRegistrationOpen bool
-  err := row.Scan(&id, &title, &description, &logoUrl, &taskId, &isRegistrationOpen, &startsAt, &endsAt)
-  if err != nil { return "", errors.Wrap(err, 0) }
-  contest := j.Object()
-  contest.Prop("id", j.String(id))
-  contest.Prop("title", j.String(title))
-  contest.Prop("description", j.String(description))
-  contest.Prop("logoUrl", j.String(logoUrl))
-  contest.Prop("taskId", j.String(taskId))
-  contest.Prop("startsAt", j.String(startsAt))
-  contest.Prop("endsAt", j.String(endsAt))
-  m.tasks.Need(taskId)
-  m.Add("contests."+id, contest)
-  return id, nil
+/*** load from contests ***/
+
+type Contest struct {
+  Id string
+  Title string
+  Description string
+  Logo_url string
+  Task_id string
+  Is_registration_open bool
+  Starts_at string
+  Ends_at string
+  Required_badge_id string
 }
 
-func (m *Model) loadTaskRow(row IRow) (string, error) {
-  var id, title string
-  err := row.Scan(&id, &title)
-  if err != nil { return "", errors.Wrap(err, 0) }
-  task := j.Object()
-  task.Prop("id", j.String(id))
-  task.Prop("title", j.String(title))
-  m.Add("tasks."+id, task)
-  return id, nil
+func (m *Model) loadContestRow(row IRow) (*Contest, error) {
+  var contest Contest
+  err := row.StructScan(&contest)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  view := j.Object()
+  view.Prop("id", j.String(contest.Id))
+  view.Prop("title", j.String(contest.Title))
+  view.Prop("description", j.String(contest.Description))
+  view.Prop("logoUrl", j.String(contest.Logo_url))
+  view.Prop("taskId", j.String(contest.Task_id))
+  view.Prop("startsAt", j.String(contest.Starts_at))
+  view.Prop("endsAt", j.String(contest.Ends_at))
+  m.Add("contests."+contest.Id, view)
+  return &contest, nil
+}
+
+/*** load from tasks ***/
+
+type Task struct {
+  Id string
+  Title string
+  Created_at string
+}
+
+func (m *Model) loadTaskRow(row IRow) (*Task, error) {
+  var task Task
+  err := row.StructScan(&task)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  view := j.Object()
+  view.Prop("id", j.String(task.Id))
+  view.Prop("title", j.String(task.Title))
+  m.Add("tasks."+task.Id, view)
+  return &task, nil
 }
