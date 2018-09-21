@@ -8,16 +8,16 @@ import (
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Response interface {
-  Add(key string, view j.Value)
-}
-
 type UserProfile interface {
   Id() string
   Username() string
   Firstname() string
   Lastname() string
   Badges() []string
+}
+
+type IRow interface {
+  Scan(dest ...interface{}) error
 }
 
 func (model *Model) FindUserByForeignId(foreignId string) (string, error) {
@@ -87,7 +87,7 @@ func (model *Model) UpdateBadges(userId string, badges []string) error {
   return nil
 }
 
-func (model *Model) ViewUser(resp Response, id string) (j.Value, error) {
+func (model *Model) ViewUser(id string) (j.Value, error) {
   rows, err := model.db.Query(
     `select username, firstname, lastname from users where id = ?`, id)
   if err != nil { return j.Null, errors.Wrap(err, 0) }
@@ -101,11 +101,11 @@ func (model *Model) ViewUser(resp Response, id string) (j.Value, error) {
   user.Prop("username", j.String(username))
   user.Prop("firstname", j.String(firstname))
   user.Prop("lastname", j.String(lastname))
-  resp.Add("users."+id, user)
+  model.Add("users."+id, user)
   return j.String(id), nil
 }
 
-func (model *Model) ViewUserContests(resp Response, userId string) (j.Value, error) {
+func (model *Model) ViewUserContests(userId string) (j.Value, error) {
   var err error
   rows, err := model.db.Query(
     `select
@@ -116,54 +116,48 @@ func (model *Model) ViewUserContests(resp Response, userId string) (j.Value, err
   if err != nil { return j.Null, errors.Wrap(err, 0) }
   defer rows.Close()
   contestIds := j.Array()
-  taskIds := make(map[string]bool)
   for rows.Next() {
-    var id, title, description, logoUrl, taskId, startsAt, endsAt string
-    var isRegistrationOpen bool
-    err = rows.Scan(&id, &title, &description, &logoUrl, &taskId, &isRegistrationOpen, &startsAt, &endsAt)
+    id, err := model.loadContestRow(rows)
     if err != nil { return j.Null, errors.Wrap(err, 0) }
-    contest := j.Object()
-    contest.Prop("id", j.String(id))
-    contest.Prop("title", j.String(title))
-    contest.Prop("description", j.String(description))
-    contest.Prop("logoUrl", j.String(logoUrl))
-    contest.Prop("taskId", j.String(taskId))
-    contest.Prop("startsAt", j.String(startsAt))
-    contest.Prop("endsAt", j.String(endsAt))
-    taskIds[taskId] = true
-    resp.Add("contests."+id, contest)
     contestIds.Item(j.String(id))
   }
-  err = model.ViewTasks(resp, keysOfSet(taskIds))
+  err = model.tasks.Load(model.loadTasks)
   if err != nil { return j.Null, errors.Wrap(err, 0) }
   return contestIds, nil
 }
 
-func (model *Model) ViewTasks(resp Response, ids []string) error {
-  if len(ids) == 0 { return nil }
+
+func (model *Model) ViewUserContest(userId string, contestId string) error {
+  var err error
+  /* verify user has access to contest */
+  row := model.db.QueryRow(
+    `select count(c.id) from user_badges ub, contests c
+     where c.id = ? and ub.user_id = ? and ub.badge_id = c.required_badge_id`, contestId, userId)
+  var count int
+  err = row.Scan(&count)
+  if err != nil { errors.Wrap(err, 0) }
+  if count != 1 { errors.Errorf("access denied") }
+
+  /* load contest, task */
+  _, err = model.loadContestRow(model.db.QueryRow(`select
+    id, title, description, logo_url, task_id, is_registration_open,
+    starts_at, ends_at from contests where c.id = ?`, contestId))
+  if err != nil { errors.Wrap(err, 0) }
+  err = model.tasks.Load(model.loadTasks)
+  if err != nil { errors.Wrap(err, 0) }
+
+  return nil
+}
+
+func (model *Model) loadTasks(ids []string) error {
   query, args, err := sqlx.In(`select id, title from tasks where id in (?)`, ids)
   if err != nil { return errors.Wrap(err, 0) }
   rows, err := model.db.Query(query, args...)
   if err != nil { return errors.Wrap(err, 0) }
   defer rows.Close()
   for rows.Next() {
-    var id, title string
-    err = rows.Scan(&id, &title)
-    if err != nil { return errors.Wrap(err, 0) }
-    task := j.Object()
-    task.Prop("id", j.String(id))
-    task.Prop("title", j.String(title))
-    resp.Add("tasks."+id, task)
+    _, err = model.loadTaskRow(rows)
+    if err != nil { return err }
   }
   return nil
-}
-
-func keysOfSet(m map[string]bool) []string {
-  keys := make([]string, len(m))
-  i := 0
-  for key := range m {
-    keys[i] = key
-    i++
-  }
-  return keys
 }

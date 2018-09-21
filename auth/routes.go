@@ -5,6 +5,7 @@ package auth
 
 import (
 
+  "database/sql"
   "io/ioutil"
   "net/http"
   "time"
@@ -21,7 +22,7 @@ import (
 
 )
 
-func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *model.Model) {
+func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
 
   oauthConf := &oauth2.Config{
       ClientID: config.Get("oauth_client_id").ToString(),
@@ -94,7 +95,8 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *model.Model) {
     if err != nil { c.AbortWithError(500, err); return }
 
     profile := LoadUserProfile(body)
-    userId, err := db.ImportUserProfile(profile, time.Now())
+    m := model.New(db)
+    userId, err := m.ImportUserProfile(profile, time.Now())
     if err != nil { c.AbortWithError(500, err); return }
 
     session.Set("userId", userId)

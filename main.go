@@ -1,21 +1,15 @@
-/*
-
-  NOTES
-  =====
-
-  Build/run with -tags=jsoniter
-
-*/
 
 package main
 
 import (
 
-  "fmt"
+  //"fmt"
   "html/template"
   //"io"
+  "io/ioutil"
   "log"
   "net/http"
+  "database/sql"
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
@@ -23,6 +17,7 @@ import (
   //"github.com/gin-contrib/cors"
   "github.com/utrack/gin-csrf"
   "github.com/json-iterator/go"  // https://godoc.org/github.com/json-iterator/go
+  _ "github.com/go-sql-driver/mysql"
   //"golang.org/x/net/context"
 
   //j "tezos-contests.izibi.com/backend/jase"
@@ -42,10 +37,12 @@ func buildRootTemplate() *template.Template {
 }
 
 func setupRouter(config jsoniter.Any) *gin.Engine {
+  var err error
+  var db *sql.DB
 
-  db, err := model.Connect(config.Get("db").ToString())
+  db, err = sql.Open("mysql", config.Get("db").ToString())
   if err != nil {
-    log.Panicln("Failed to connect to model: %s", err)
+    log.Panicln("Failed to connect to database: %s", err)
   }
 
   // Disable Console Color
@@ -99,13 +96,25 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     resp := utils.NewResponse(c)
     id, ok := auth.GetUserId(c)
     if !ok { resp.StringError("you don't exist"); return }
-    userId, err := db.ViewUser(resp, id)
+    m := model.New(db)
+    userId, err := m.ViewUser(id)
     if err != nil { resp.Error(err); return }
-    resp.Set("userId", userId)
-    contestIds, err := db.ViewUserContests(resp, id)
+    m.Set("userId", userId)
+    contestIds, err := m.ViewUserContests(id)
     if err != nil { resp.Error(err); return }
-    resp.Set("contestIds", contestIds)
-    resp.Send()
+    m.Set("contestIds", contestIds)
+    resp.Send(m)
+  })
+
+  backend.GET("/Contests/:contestId", func(c *gin.Context) {
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    m := model.New(db)
+    contestId := c.Param("contestId")
+    err := m.ViewUserContest(userId, contestId)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
   })
 
 /*
@@ -135,20 +144,12 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
 }
 
 func main() {
-  config := jsoniter.Get([]byte(`{
-    "port": 8080,
-    "db": "tezos:kerl1Olhog_@tcp(tezos)/tezos_platform",
-    "secret": "0123456789",
-    "csrf_secret": "AAAAAAAA",
-    "oauth_client_id": "32",
-    "oauth_secret": "jDbaEtPfCaKwnss0jLuCOl1PAWPDzagEKGLLKzHY",
-    "oauth_callback_url": "https://home.epixode.fr/tezos/backend/LoginComplete",
-    "oauth_auth_url": "https://login.france-ioi.org/oauth/authorize",
-    "oauth_token_url": "https://login.france-ioi.org/oauth/token",
-    "profile_url": "https://login.france-ioi.org/user_api/account",
-    "logout_url": "https://login.france-ioi.org/logout",
-    "mount_path": "/tezos/backend"
-  }`))
+
+  var err error
+  var configFile []byte
+  configFile, err = ioutil.ReadFile("config.json")
+  if err != nil { panic(err); return }
+  config := jsoniter.Get(configFile)
 
   /*
   f, _ := os.Create("gin.log")
@@ -157,5 +158,5 @@ func main() {
   */
 
   r := setupRouter(config)
-  r.Run(fmt.Sprintf(":%d", config.Get("port").ToUint32()))
+  r.Run(config.Get("listen").ToString())
 }
