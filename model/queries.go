@@ -339,16 +339,16 @@ func (m *Model) isUserInTeam(userId string, teamId string) (bool, error) {
 }
 
 func (m *Model) RenewTeamAccessCode(teamId string, userId string) error {
+  /* Verify the user making the request is in the team. */
+  isMember, err := m.isUserInTeam(userId, teamId)
+  if err != nil { return err }
+  if !isMember { return nil }
   /* Load the team and verify it is not locked. */
   team, err := m.loadTeam(teamId, NullFacet)
   if err != nil { return err }
   if team.Is_locked {
     return errors.Errorf("team is locked")
   }
-  /* Verify the user making the request is in the team. */
-  isMember, err := m.isUserInTeam(userId, teamId)
-  if err != nil { return err }
-  if !isMember { return nil }
   /* Renew the access code. */
   accessCode, err := generateAccessCode()
   if err != nil { return err }
