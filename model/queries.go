@@ -97,7 +97,11 @@ func (m *Model) UpdateBadges(userId string, badges []string) error {
 func (m *Model) ViewUser(userId string) error {
   user, err := m.loadUser(userId, BaseFacet)
   if err != nil { return err }
-  m.Set("userId", j.String(user.Id))
+  if user != nil {
+    m.Set("userId", j.String(user.Id))
+  } else {
+    m.Set("userId", j.Null)
+  }
   return nil
 }
 
