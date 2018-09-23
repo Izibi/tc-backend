@@ -96,7 +96,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     var err error
     resp := utils.NewResponse(c)
     id, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     m := model.New(db)
     err = m.ViewUser(id)
     if err != nil { resp.Error(err); return }
@@ -108,7 +108,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   backend.GET("/Contests/:contestId", func(c *gin.Context) {
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     m := model.New(db)
     contestId := c.Param("contestId")
     err := m.ViewUserContest(userId, contestId)
@@ -119,7 +119,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   backend.GET("/Contests/:contestId/Team", func(c *gin.Context) {
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     m := model.New(db)
     contestId := c.Param("contestId")
     err := m.ViewUserContestTeam(userId, contestId)
@@ -131,7 +131,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     var err error
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     contestId := c.Param("contestId")
     type Body struct {
       TeamName string `json:"teamName"`
@@ -149,7 +149,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     var err error
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     contestId := c.Param("contestId")
     type Body struct {
       AccessCode string `json:"accessCode"`
@@ -167,7 +167,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     var err error
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     teamId := c.Param("teamId")
     m := model.New(db)
     err = m.LeaveTeam(teamId, userId)
@@ -179,7 +179,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     var err error
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { resp.StringError("you don't exist"); return }
+    if !ok { resp.BadUser(); return }
     teamId := c.Param("teamId")
     m := model.New(db)
     err = m.RenewTeamAccessCode(teamId, userId)

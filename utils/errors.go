@@ -27,6 +27,10 @@ func (r *Response) StringError(msg string) {
   r.Error(errors.New(msg))
 }
 
+func (r *Response) BadUser() {
+  r.StringError("you don't exist")
+}
+
 func JError(err error) j.Value {
   o := j.Object()
   o.Prop("error", j.String(err.Error()))
