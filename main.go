@@ -62,7 +62,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   r.Use(csrf.Middleware(csrf.Options{
         Secret: config.Get("csrf_secret").ToString(),
         ErrorFunc: func(c *gin.Context) {
-          c.String(400, "CSRF token mismatch")
+          c.JSON(http.StatusOK, gin.H{"error": "CSRF token mismatch"})
           c.Abort()
         },
     }))
