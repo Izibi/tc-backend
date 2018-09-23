@@ -410,3 +410,29 @@ func (m *Model) LeaveTeam(teamId string, userId string) error {
   /* TODO: push team update to connected members */
   return nil
 }
+
+type UpdateTeamArg struct {
+  IsOpen *bool `json:"isOpen"`
+}
+func (m *Model) UpdateTeam(teamId string, userId string, arg UpdateTeamArg) error {
+
+  /* Verify the user making the request is in the team. */
+  isMember, err := m.isUserInTeam(userId, teamId)
+  if err != nil { return err }
+  if !isMember { return nil }
+
+  /* Load the team and verify it is not locked. */
+  team, err := m.loadTeam(teamId, NullFacet)
+  if err != nil { return err }
+  if team.Is_locked {
+    return errors.Errorf("team is locked")
+  }
+
+  if arg.IsOpen != nil {
+    _, err = m.db.Exec(
+      `UPDATE teams SET is_open = ? WHERE id = ?`, *arg.IsOpen, teamId)
+    if err != nil { return errors.Wrap(err, 0) }
+  }
+
+  return m.ViewUserContestTeam(userId, team.Contest_id)
+}

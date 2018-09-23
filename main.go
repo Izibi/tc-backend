@@ -187,6 +187,21 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     resp.Send(m)
   })
 
+  backend.POST("/Teams/:teamId/Update", func(c *gin.Context) {
+    var err error
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.BadUser(); return }
+    teamId := c.Param("teamId")
+    var arg model.UpdateTeamArg
+    err = c.ShouldBindJSON(&arg)
+    if err != nil { resp.Error(err); return }
+    m := model.New(db)
+    err = m.UpdateTeam(teamId, userId, arg)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
 /*
   // Authorized group (uses gin.BasicAuth() middleware)
   // Same as:
