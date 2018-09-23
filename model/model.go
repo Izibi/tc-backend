@@ -13,6 +13,7 @@ type Model struct {
   result j.IObject
   entities map[string]j.Value
   tasks LoadSet
+  users LoadSet
 }
 
 func New (db *sql.DB) *Model {

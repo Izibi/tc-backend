@@ -3,6 +3,7 @@ package model
 
 import (
   "time"
+  "database/sql"
   "github.com/go-errors/errors"
   "github.com/jmoiron/sqlx"
   j "tezos-contests.izibi.com/backend/jase"
@@ -88,62 +89,57 @@ func (m *Model) UpdateBadges(userId string, badges []string) error {
   return nil
 }
 
-func (m *Model) ViewUser(id string) (j.Value, error) {
-  /// XXX use loadUserRow
-  rows, err := m.db.Query(
-    `select username, firstname, lastname from users where id = ?`, id)
-  if err != nil { return j.Null, errors.Wrap(err, 0) }
-  defer rows.Close()
-  if !rows.Next() { return j.Null, nil }
-  var username, firstname, lastname string
-  err = rows.Scan(&username, &firstname, &lastname)
-  if err != nil { return j.Null, errors.Wrap(err, 0) }
-  user := j.Object()
-  user.Prop("id", j.String(id))
-  user.Prop("username", j.String(username))
-  user.Prop("firstname", j.String(firstname))
-  user.Prop("lastname", j.String(lastname))
-  m.Add("users."+id, user)
-  return j.String(id), nil
+func (m *Model) ViewUser(id string) error {
+  row := m.db.QueryRowx(`SELECT * FROM users WHERE id = ?`, id)
+  user, err := m.loadUserRow(row, BaseFacet)
+  if err != nil { return err }
+  m.Set("userId", j.String(user.Id))
+  return nil
 }
 
-func (m *Model) ViewUserContests(userId string) (j.Value, error) {
+func (m *Model) loadUsers(ids []string) error {
+  query, args, err := sqlx.In(`SELECT * FROM users WHERE id IN (?)`, ids)
+  if err != nil { return errors.Wrap(err, 0) }
+  rows, err := m.db.Queryx(query, args...)
+  if err != nil { return errors.Wrap(err, 0) }
+  defer rows.Close()
+  for rows.Next() {
+    _, err = m.loadUserRow(rows, BaseFacet)
+    if err != nil { return err }
+  }
+  return nil
+}
+
+func (m *Model) ViewUserContests(userId string) error {
   var err error
   rows, err := m.db.Queryx(
-    `select
-      c.id, c.title, c.description, c.logo_url, c.task_id, c.is_registration_open,
-      c.starts_at, c.ends_at
-    from user_badges ub, contests c
-    where ub.user_id = ? and ub.badge_id = c.required_badge_id`, userId)
-  if err != nil { return j.Null, errors.Wrap(err, 0) }
+    `select c.* from user_badges ub, contests c
+     where ub.user_id = ? and ub.badge_id = c.required_badge_id`, userId)
+  if err != nil { return errors.Wrap(err, 0) }
   defer rows.Close()
   contestIds := j.Array()
   for rows.Next() {
     contest, err := m.loadContestRow(rows, BaseFacet)
-    if err != nil { return j.Null, err }
+    if err != nil { return err }
     contestIds.Item(j.String(contest.Id))
     m.tasks.Need(contest.Task_id)
   }
   err = m.tasks.Load(m.loadTasks)
-  if err != nil { return j.Null, err }
-  return contestIds, nil
+  if err != nil { return err }
+  m.Set("contestIds", contestIds)
+  return nil
 }
 
 func (m *Model) ViewUserContest(userId string, contestId string) error {
   var err error
   /* verify user has access to contest */
-  row := m.db.QueryRow(
-    `select count(c.id) from user_badges ub, contests c
-     where c.id = ? and ub.user_id = ? and ub.badge_id = c.required_badge_id`, contestId, userId)
-  var count int
-  err = row.Scan(&count)
-  if err != nil { return errors.Wrap(err, 0) }
-  if count != 1 { return errors.Errorf("access denied") }
+  ok, err := m.testUserContestAccess(userId, contestId)
+  if err != nil { return err }
+  if !ok { return errors.Errorf("access denied") }
 
   /* load contest, task */
-  contest, err := m.loadContestRow(m.db.QueryRowx(`select
-    id, title, description, logo_url, task_id, is_registration_open,
-    starts_at, ends_at from contests where id = ?`, contestId), BaseFacet)
+  contest, err := m.loadContestRow(m.db.QueryRowx(
+    `select * from contests where id = ?`, contestId), BaseFacet)
   if err != nil { return err }
   m.tasks.Need(contest.Task_id)
   err = m.tasks.Load(m.loadTasks)
@@ -154,8 +150,18 @@ func (m *Model) ViewUserContest(userId string, contestId string) error {
   return nil
 }
 
+func (m *Model) testUserContestAccess(userId string, contestId string) (bool, error) {
+  row := m.db.QueryRow(
+    `select count(c.id) from user_badges ub, contests c
+     where c.id = ? and ub.user_id = ? and ub.badge_id = c.required_badge_id`, contestId, userId)
+  var count int
+  err := row.Scan(&count)
+  if err != nil { return false, errors.Wrap(err, 0) }
+  return count == 1, nil
+}
+
 func (m *Model) loadTasks(ids []string) error {
-  query, args, err := sqlx.In(`select id, title from tasks where id in (?)`, ids)
+  query, args, err := sqlx.In(`select * from tasks where id in (?)`, ids)
   if err != nil { return errors.Wrap(err, 0) }
   rows, err := m.db.Queryx(query, args...)
   if err != nil { return errors.Wrap(err, 0) }
@@ -194,8 +200,13 @@ func (m *Model) ViewUserContestTeam(userId string, contestId string) error {
 
 func (m *Model) loadUserContestTeam(userId string, contestId string, f Facets) (*Team, error) {
   return m.loadTeamRow(m.db.QueryRowx(
-    `SELECT * FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
-     WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, userId, contestId), f)
+    `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
+     WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId), f)
+}
+
+func (m *Model) loadTeam(teamId string, f Facets) (*Team, error) {
+  return m.loadTeamRow(m.db.QueryRowx(
+    `SELECT * FROM teams WHERE id = ?`, teamId), f)
 }
 
 func (m *Model) loadTeamMembers(teamId string, f Facets) ([]TeamMember, error) {
@@ -208,6 +219,9 @@ func (m *Model) loadTeamMembers(teamId string, f Facets) ([]TeamMember, error) {
     member, err := m.loadTeamMemberRow(rows, f)
     if err != nil { return nil, err }
     members = append(members, *member)
+    m.users.Need(member.User_id)
   }
+  err = m.users.Load(m.loadUsers)
+  if err != nil { return nil, errors.Wrap(err, 0) }
   return members, nil
 }

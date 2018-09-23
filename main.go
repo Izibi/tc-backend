@@ -93,16 +93,15 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   auth.SetupRoutes(backend, config, db)
 
   backend.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
+    var err error
     resp := utils.NewResponse(c)
     id, ok := auth.GetUserId(c)
     if !ok { resp.StringError("you don't exist"); return }
     m := model.New(db)
-    userId, err := m.ViewUser(id)
+    err = m.ViewUser(id)
     if err != nil { resp.Error(err); return }
-    m.Set("userId", userId)
-    contestIds, err := m.ViewUserContests(id)
+    err = m.ViewUserContests(id)
     if err != nil { resp.Error(err); return }
-    m.Set("contestIds", contestIds)
     resp.Send(m)
   })
 
