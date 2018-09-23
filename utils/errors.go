@@ -34,7 +34,11 @@ func (r *Response) BadUser() {
 func JError(err error) j.Value {
   o := j.Object()
   o.Prop("error", j.String(err.Error()))
-  o.Prop("location", j.String(traceLocation(err.(*errors.Error).ErrorStack())))
+  err2, ok := err.(*errors.Error)
+  if (ok) {
+    o.Prop("location", j.String(traceLocation(err2.ErrorStack())))
+  }
+  // *json.UnmarshalTypeError
   return o
 }
 
