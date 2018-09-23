@@ -94,9 +94,8 @@ func (m *Model) UpdateBadges(userId string, badges []string) error {
   return nil
 }
 
-func (m *Model) ViewUser(id string) error {
-  row := m.db.QueryRowx(`SELECT * FROM users WHERE id = ?`, id)
-  user, err := m.loadUserRow(row, BaseFacet)
+func (m *Model) ViewUser(userId string) error {
+  user, err := m.loadUser(userId, BaseFacet)
   if err != nil { return err }
   m.Set("userId", j.String(user.Id))
   return nil
@@ -144,7 +143,7 @@ func (m *Model) ViewUserContest(userId string, contestId string) error {
 
   /* load contest, task */
   contest, err := m.loadContestRow(m.db.QueryRowx(
-    `select * from contests where id = ?`, contestId), BaseFacet)
+    `SELECT * FROM contests WHERE id = ?`, contestId), BaseFacet)
   if err != nil { return err }
   m.tasks.Need(contest.Task_id)
   err = m.tasks.Load(m.loadTasks)
@@ -207,6 +206,11 @@ func (m *Model) loadUserContestTeam(userId string, contestId string, f Facets) (
   return m.loadTeamRow(m.db.QueryRowx(
     `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
      WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId), f)
+}
+
+func (m *Model) loadUser(userId string, f Facets) (*User, error) {
+  return m.loadUserRow(m.db.QueryRowx(
+    `SELECT * FROM users WHERE id = ?`, userId), f)
 }
 
 func (m *Model) loadTeam(teamId string, f Facets) (*Team, error) {
