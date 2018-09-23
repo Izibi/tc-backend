@@ -6,7 +6,6 @@ package auth
 import (
 
   "database/sql"
-  "fmt"
   "io/ioutil"
   "net/http"
 
