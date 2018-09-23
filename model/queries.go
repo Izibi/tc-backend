@@ -5,6 +5,7 @@ import (
   "crypto/rand"
   "fmt"
   "encoding/binary"
+  "strconv"
   "strings"
   "database/sql"
   "github.com/go-errors/errors"
@@ -54,7 +55,7 @@ func (m *Model) ImportUserProfile(profile UserProfile) (string, error) {
     if err != nil { return "", errors.Wrap(err, 0) }
     newId, err := res.LastInsertId()
     if err != nil { return "", errors.Wrap(err, 0) }
-    userId = string(newId)
+    userId = strconv.FormatInt(newId, 10)
   }
   err = m.UpdateBadges(userId, profile.Badges())
   if err != nil { return "", err }
