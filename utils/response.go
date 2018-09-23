@@ -6,6 +6,7 @@ import (
   "net/http"
 
   "github.com/gin-gonic/gin"
+  "github.com/utrack/gin-csrf"
 
   j "tezos-contests.izibi.com/backend/jase"
   "tezos-contests.izibi.com/backend/model"
@@ -27,6 +28,10 @@ func (r *Response) Send(m *model.Model) {
     res := j.Object()
     res.Prop("result", m.Result())
     res.Prop("entities", m.Entities())
+    /* Automatically send the CSRF token to GET requests. */
+    if r.context.Request.Method == "GET" {
+      res.Prop("csrfToken", j.String(csrf.GetToken(r.context)))
+    }
     res.Write(w)
     return false
   })

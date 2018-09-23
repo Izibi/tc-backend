@@ -12,7 +12,6 @@ import (
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
-  "github.com/utrack/gin-csrf"
   "github.com/json-iterator/go"  // https://godoc.org/github.com/json-iterator/go
   "golang.org/x/oauth2"
 
@@ -36,16 +35,14 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
   }
 
   r.GET("/User", func (c *gin.Context) {
-
     resp := utils.NewResponse(c)
     m := model.New(db)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
       userId := val.(string)
-      _, err := m.ViewUser(userId)
+      err := m.ViewUser(userId)
       if err != nil { resp.Error(err); return }
-      m.Set("userId", j.String(userId))
     }
     resp.Send(m)
   })
@@ -110,7 +107,6 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     message := j.Object()
     message.Prop("type", j.String("login"))
     message.Prop("userId", j.String(userId))
-    message.Prop("csrfToken", j.String(csrf.GetToken(c)))
     messageStr, err := j.ToString(message)
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{
@@ -128,10 +124,10 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
 
     session := sessions.Default(c)
     session.Clear()
+    session.Save()
 
     message := j.Object()
     message.Prop("type", j.String("logout"))
-    message.Prop("csrfToken", j.String(csrf.GetToken(c)))
     messageStr, err := j.ToString(message)
     if err != nil { c.AbortWithError(500, err) }
     data := logoutCompleteData{
