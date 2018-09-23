@@ -314,17 +314,17 @@ func (m *Model) JoinTeam(userId string, contestId string, accessCode string) err
   if !ok { return errors.Errorf("access denied") }
 
   /* Find the team based on the access code provided. */
-  var teamId string
-  err = m.db.QueryRowx(
-    `SELECT id FROM teams WHERE contest_id = ? AND access_code = ?`,
-     contestId, accessCode).Scan(&teamId)
-  if err == sql.ErrNoRows { return errors.Errorf("bad access code") }
+  team, err := m.loadTeamRow(m.db.QueryRowx(
+    `SELECT * FROM teams WHERE contest_id = ? AND access_code = ?`,
+     contestId, accessCode), BaseFacet)
   if err != nil { return errors.Wrap(err, 0) }
+  if team == nil { return errors.Errorf("bad access code") }
+  if team.Is_locked { return errors.Errorf("team is locked") }
 
   /* Add the user as team member */
   _, err = m.db.Exec(
     `INSERT INTO team_members (team_id, user_id, joined_at, is_creator)
-     VALUES (?, ?, NOW(), 0)`, teamId, userId)
+     VALUES (?, ?, NOW(), 0)`, team.Id, userId)
   if err != nil { return errors.Wrap(err, 0) }
 
   return m.ViewUserContestTeam(userId, contestId)
