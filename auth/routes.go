@@ -110,7 +110,7 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{
       Message: messageStr,
-      Target: "https://home.epixode.fr", // TODO: from config, frontend_origin
+      Target: config.Get("frontend_origin").ToString(),
     }
     c.HTML(http.StatusOK, "loginComplete", data)
   })
@@ -131,7 +131,7 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err) }
     data := logoutCompleteData{
       Message: messageStr,
-      Target: "https://home.epixode.fr", // TODO: from config, frontend_origin
+      Target: config.Get("frontend_origin").ToString(),
       LogoutUrl: config.Get("logout_url").ToString(),
     }
 
