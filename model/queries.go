@@ -325,6 +325,7 @@ func (m *Model) JoinTeam(userId string, contestId string, accessCode string) err
   if err != nil { return errors.Wrap(err, 0) }
   if team == nil { return errors.Errorf("bad access code") }
   if team.Is_locked { return errors.Errorf("team is locked") }
+  if !team.Is_open { return errors.Errorf("team is closed") }
 
   /* Add the user as team member */
   _, err = m.db.Exec(
