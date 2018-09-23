@@ -262,7 +262,7 @@ func (m *Model) CreateTeam(userId string, contestId string, teamName string) err
     `SELECT COUNT(t.id) FROM teams t WHERE t.contest_id = ? AND t.name = ?`,
      contestId, teamName)
   if err = row.Scan(&teamCount); err != nil { return errors.Wrap(err, 0) }
-  if teamCount != 0 { return errors.Errorf("name is not unique") }
+  if teamCount != 0 { return errors.Errorf("team name is not unique") }
 
   /* Create the team. */
   accessCode, err := generateAccessCode()
@@ -351,9 +351,7 @@ func (m *Model) RenewTeamAccessCode(teamId string, userId string) error {
   /* Load the team and verify it is not locked. */
   team, err := m.loadTeam(teamId, NullFacet)
   if err != nil { return err }
-  if team.Is_locked {
-    return errors.Errorf("team is locked")
-  }
+  if team.Is_locked { return errors.Errorf("team is locked") }
   /* Renew the access code. */
   accessCode, err := generateAccessCode()
   if err != nil { return err }
@@ -372,9 +370,7 @@ func (m *Model) LeaveTeam(teamId string, userId string) error {
   /* Load the team and verify it is not locked. */
   team, err := m.loadTeam(teamId, NullFacet)
   if err != nil { return err }
-  if team.Is_locked {
-    return errors.Errorf("team is locked")
-  }
+  if team.Is_locked { return errors.Errorf("team is locked") }
 
   /* Load team_member row to determine if the creator is leaving the team. */
   member, err := m.loadTeamMemberRow(m.db.QueryRowx(
@@ -429,9 +425,7 @@ func (m *Model) UpdateTeam(teamId string, userId string, arg UpdateTeamArg) erro
   /* Load the team and verify it is not locked. */
   team, err := m.loadTeam(teamId, NullFacet)
   if err != nil { return err }
-  if team.Is_locked {
-    return errors.Errorf("team is locked")
-  }
+  if team.Is_locked { return errors.Errorf("team is locked") }
 
   if arg.IsOpen != nil {
     _, err = m.db.Exec(
