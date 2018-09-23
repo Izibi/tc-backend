@@ -6,7 +6,6 @@ import (
   "fmt"
   "encoding/binary"
   "strings"
-  "time"
   "database/sql"
   "github.com/go-errors/errors"
   "github.com/jmoiron/sqlx"
@@ -34,7 +33,7 @@ func (m *Model) FindUserByForeignId(foreignId string) (string, error) {
   return id, nil
 }
 
-func (m *Model) ImportUserProfile(profile UserProfile, now time.Time) (string, error) {
+func (m *Model) ImportUserProfile(profile UserProfile) (string, error) {
   var userId string
   foreignId := profile.Id()
   rows, err := m.db.Query(`SELECT id FROM users WHERE foreign_id = ?`, foreignId)
@@ -44,14 +43,14 @@ func (m *Model) ImportUserProfile(profile UserProfile, now time.Time) (string, e
     rows.Close()
     if err != nil { return "", errors.Wrap(err, 0) }
     _, err := m.db.Exec(
-      `UPDATE users SET updated_at = ?, username = ?, firstname = ?, lastname = ? WHERE id = ?`,
-      now, profile.Username(), profile.Firstname(), profile.Lastname(), userId)
+      `UPDATE users SET username = ?, firstname = ?, lastname = ? WHERE id = ?`,
+      profile.Username(), profile.Firstname(), profile.Lastname(), userId)
     if err != nil { return "", errors.Wrap(err, 0) }
   } else {
     rows.Close()
     res, err := m.db.Exec(
-      `INSERT INTO users (foreign_id, created_at, updated_at, username, firstname, lastname) VALUES (?, ?, ?, ?, ?, ?)`,
-      foreignId, now, now, profile.Username(), profile.Firstname(), profile.Lastname())
+      `INSERT INTO users (foreign_id, username, firstname, lastname) VALUES (?, ?, ?, ?)`,
+      foreignId, profile.Username(), profile.Firstname(), profile.Lastname())
     if err != nil { return "", errors.Wrap(err, 0) }
     newId, err := res.LastInsertId()
     if err != nil { return "", errors.Wrap(err, 0) }
@@ -263,8 +262,8 @@ func (m *Model) CreateTeam(userId string, contestId string, teamName string) err
   accessCode, err := generateAccessCode()
   if err != nil { return err }
   res, err := m.db.Exec(
-    `INSERT INTO teams (created_at, access_code, contest_id, is_open, is_locked, name, public_key)
-     VALUES (NOW(), ?, ?, 1, 0, ?, NULL)`, accessCode, contestId, teamName)
+    `INSERT INTO teams (access_code, contest_id, is_open, is_locked, name, public_key)
+     VALUES (?, ?, 1, 0, ?, NULL)`, accessCode, contestId, teamName)
   if err != nil {
     // TODO: retry a few times in case of access code conflict
     return errors.Wrap(err, 0)

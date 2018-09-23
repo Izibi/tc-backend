@@ -6,9 +6,9 @@ package auth
 import (
 
   "database/sql"
+  "fmt"
   "io/ioutil"
   "net/http"
-  "time"
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
@@ -98,7 +98,7 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
 
     profile := LoadUserProfile(body)
     m := model.New(db)
-    userId, err := m.ImportUserProfile(profile, time.Now())
+    userId, err := m.ImportUserProfile(profile)
     if err != nil { c.AbortWithError(500, err); return }
 
     session.Set("userId", userId)

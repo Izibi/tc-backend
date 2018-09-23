@@ -3,8 +3,8 @@
 CREATE TABLE users (
     id BIGINT NOT NULL AUTO_INCREMENT,
     foreign_id TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_admin BOOLEAN NOT NULL DEFAULT 0,
     username TEXT NOT NULL,
     firstname TEXT NOT NULL,
@@ -12,11 +12,10 @@ CREATE TABLE users (
     PRIMARY KEY (id)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
 CREATE UNIQUE INDEX ix_users__foreign_id USING btree ON users (foreign_id(64));
--- ALTER TABLE users MODIFY is_admin BOOLEAN NOT NULL DEFAULT 0;
--- ALTER TABLE users ADD COLUMN updated_at DATETIME NOT NULL;
 
 CREATE TABLE badges (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     symbol TEXT NOT NULL,
     PRIMARY KEY (id)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
@@ -36,7 +35,8 @@ ALTER TABLE user_badges ADD CONSTRAINT fk_user_badges__badge_id
 
 CREATE TABLE teams (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    created_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     access_code TEXT NOT NULL,
     contest_id BIGINT NOT NULL,
     is_open BOOLEAN NOT NULL,
@@ -46,11 +46,12 @@ CREATE TABLE teams (
     PRIMARY KEY (id)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
 CREATE INDEX ix_teams__contest_id USING btree ON teams (contest_id);
+CREATE UNIQUE INDEX ix_teams__access_code USING btree ON teams (access_code);
 
 CREATE TABLE team_members (
     team_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
-    joined_at DATETIME NOT NULL,
+    joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_creator BOOLEAN NOT NULL,
     PRIMARY KEY (team_id, user_id)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
@@ -63,13 +64,16 @@ ALTER TABLE team_members ADD CONSTRAINT fk_team_members__user_id
 
 CREATE TABLE tasks (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     title TEXT NOT NULL,
-    created_at DATETIME NOT NULL,
     PRIMARY KEY (id)
 ) CHARACTER SET utf8 ENGINE=InnoDB;
 
 CREATE TABLE contests (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     logo_url TEXT NOT NULL,
@@ -90,6 +94,8 @@ ALTER TABLE contests ADD CONSTRAINT fk_contests__required_badge_id
 
 CREATE TABLE task_resources (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     task_id BIGINT NOT NULL,
     rank INT NOT NULL,
     title TEXT NOT NULL,
@@ -102,4 +108,3 @@ CREATE INDEX ix_task_resources__task_id_rank USING btree ON task_resources (task
 
 ALTER TABLE task_resources ADD CONSTRAINT fk_task_resources__task_id
     FOREIGN KEY ix_task_resources__task_id (task_id) REFERENCES tasks(id) ON DELETE CASCADE;
-
