@@ -257,6 +257,7 @@ func (m *Model) CreateTeam(userId string, contestId string, teamName string) err
 
   /* Verify the team name is unique for the contest. */
   teamName = strings.TrimSpace(teamName)
+  if len(teamName) == 0 { return errors.Errorf("team name is too short") }
   row = m.db.QueryRowx(
     `SELECT COUNT(t.id) FROM teams t WHERE t.contest_id = ? AND t.name = ?`,
      contestId, teamName)
