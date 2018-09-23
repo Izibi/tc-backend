@@ -7,4 +7,5 @@ type Facets struct {
   Member bool
 }
 
+var NullFacet Facets = Facets{}
 var BaseFacet Facets = Facets{Base: true}

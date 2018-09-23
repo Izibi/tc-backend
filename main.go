@@ -127,6 +127,66 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     resp.Send(m)
   })
 
+  backend.POST("/Contests/:contestId/CreateTeam", func(c *gin.Context) {
+    var err error
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    contestId := c.Param("contestId")
+    type Body struct {
+      TeamName string `json:"teamName"`
+    }
+    var body Body
+    err = c.ShouldBindJSON(&body)
+    if err != nil { resp.Error(err); return }
+    m := model.New(db)
+    err = m.CreateTeam(userId, contestId, body.TeamName)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
+  backend.POST("/Contests/:contestId/JoinTeam", func(c *gin.Context) {
+    var err error
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    contestId := c.Param("contestId")
+    type Body struct {
+      AccessCode string `json:"accessCode"`
+    }
+    var body Body
+    err = c.ShouldBindJSON(&body)
+    if err != nil { resp.Error(err); return }
+    m := model.New(db)
+    err = m.JoinTeam(userId, contestId, body.AccessCode)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
+  backend.POST("/Teams/:teamId/Leave", func(c *gin.Context) {
+    var err error
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    teamId := c.Param("teamId")
+    m := model.New(db)
+    err = m.LeaveTeam(teamId, userId)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
+  backend.POST("/Teams/:teamId/AccessCode", func(c *gin.Context) {
+    var err error
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.StringError("you don't exist"); return }
+    teamId := c.Param("teamId")
+    m := model.New(db)
+    err = m.RenewTeamAccessCode(teamId, userId)
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
 /*
   // Authorized group (uses gin.BasicAuth() middleware)
   // Same as:
