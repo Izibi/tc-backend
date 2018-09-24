@@ -334,6 +334,11 @@ func (m *Model) JoinTeam(userId string, contestId string, accessCode string) err
   if team.Is_locked { return errors.Errorf("team is locked") }
   if !team.Is_open { return errors.Errorf("team is closed") }
 
+  /* Verify the max team size is not exceeded. */
+  teamSize, err := m.getTeamMembersCount(team.Id)
+  if err != nil { return err }
+  if teamSize >= 3 { return errors.Errorf("team is full") }
+
   /* Add the user as team member */
   _, err = m.db.Exec(
     `INSERT INTO team_members (team_id, user_id, joined_at, is_creator)
@@ -349,6 +354,14 @@ func (m *Model) isUserInTeam(userId string, teamId string) (bool, error) {
   var count int
   if err := row.Scan(&count); err != nil { return false, errors.Wrap(err, 0) }
   return count == 1, nil
+}
+
+func (m *Model) getTeamMembersCount(teamId string) (int, error) {
+  row := m.db.QueryRowx(
+    `SELECT COUNT(*) FROM team_members WHERE team_id = ?`, teamId)
+  var count int
+  if err := row.Scan(&count); err != nil { return 0, errors.Wrap(err, 0) }
+  return count, nil
 }
 
 func (m *Model) RenewTeamAccessCode(teamId string, userId string) error {
