@@ -3,18 +3,19 @@ package main
 
 import (
 
-  //"fmt"
+  "database/sql"
+  "fmt"
   "html/template"
   //"io"
   "io/ioutil"
   "log"
   "net/http"
-  "database/sql"
+  "time"
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
   "github.com/gin-contrib/sessions/cookie"
-  //"github.com/gin-contrib/cors"
+  "github.com/gin-contrib/cors"
   "github.com/utrack/gin-csrf"
   "github.com/json-iterator/go"  // https://godoc.org/github.com/json-iterator/go
   _ "github.com/go-sql-driver/mysql"
@@ -66,16 +67,16 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
           c.Abort()
         },
     }))
-  /*
   r.Use(cors.New(cors.Config{
-    AllowOrigins:     []string{"http://localhost:8000", "http://localhost:8080"},
+    AllowOrigins:     []string{
+      config.Get("frontend_origin").ToString(),
+    },
     AllowMethods:     []string{"GET", "POST"},
     AllowHeaders:     []string{"Origin"},
     ExposeHeaders:    []string{"Content-Length"},
     AllowCredentials: true,
     MaxAge: 12 * time.Hour,
   }))
-  */
 
   // Ping test
   r.GET("/ping", func(c *gin.Context) {
@@ -91,6 +92,13 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   }
 
   auth.SetupRoutes(backend, config, db)
+
+  backend.GET("/CsrfToken.js", func(c *gin.Context) {
+    /* Token is base64-encoded and thus safe to inject with %s. */
+    token := csrf.GetToken(c)
+    c.Data(200, "application/javascript",
+      []byte(fmt.Sprintf(";window.csrfToken = \"%s\";", token)))
+  });
 
   backend.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
     var err error
