@@ -146,8 +146,7 @@ func (m *Model) ViewUserContest(userId string, contestId string) error {
   if !ok { return errors.Errorf("access denied") }
 
   /* load contest, task */
-  contest, err := m.loadContestRow(m.db.QueryRowx(
-    `SELECT * FROM contests WHERE id = ?`, contestId), BaseFacet)
+  contest, err := m.loadContest(contestId, BaseFacet)
   if err != nil { return err }
   m.tasks.Need(contest.Task_id)
   err = m.tasks.Load(m.loadTasks)
@@ -194,6 +193,8 @@ func (m *Model) loadTaskResources(taskId string) error {
 }
 
 func (m *Model) ViewUserContestTeam(userId string, contestId string) error {
+  _, err := m.loadContest(contestId, BaseFacet)
+  if err != nil { return err }
   team, err := m.loadUserContestTeam(userId, contestId, Facets{Base: true, Member: true})
   if err != nil { return err }
   if team == nil {
@@ -220,6 +221,11 @@ func (m *Model) loadUser(userId string, f Facets) (*User, error) {
 func (m *Model) loadTeam(teamId string, f Facets) (*Team, error) {
   return m.loadTeamRow(m.db.QueryRowx(
     `SELECT * FROM teams WHERE id = ?`, teamId), f)
+}
+
+func (m *Model) loadContest(contestId string, f Facets) (*Contest, error) {
+  return m.loadContestRow(m.db.QueryRowx(
+    `SELECT * FROM contests WHERE id = ?`, contestId), f)
 }
 
 func (m *Model) loadTeamMembers(teamId string, f Facets) ([]TeamMember, error) {
