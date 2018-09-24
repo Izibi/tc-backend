@@ -68,7 +68,8 @@ func (m *Model) UpdateBadges(userId string, badges []string) error {
   if len(badges) == 0 {
     _, err := m.db.Exec(`DELETE FROM user_badges
       WHERE user_badges.user_id = ?`, userId)
-    return errors.Wrap(err, 0)
+    if err != nil { return errors.Wrap(err, 0) }
+    return nil
   }
 
   /* Delete any badges the user no longer holds. */
