@@ -43,7 +43,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
 
   db, err = sql.Open("mysql", config.Get("db").ToString())
   if err != nil {
-    log.Panicln("Failed to connect to database: %s", err)
+    log.Panicf("Failed to connect to database: %s\n", err)
   }
 
   // Disable Console Color
