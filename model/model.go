@@ -3,6 +3,7 @@ package model
 
 import (
   "database/sql"
+  "sort"
   "github.com/jmoiron/sqlx"
   _ "github.com/go-sql-driver/mysql"
   j "tezos-contests.izibi.com/backend/jase"
@@ -47,4 +48,20 @@ func (m *Model) Entities() j.IObject {
     entities.Prop(key, m.entities[key])
   }
   return entities
+}
+
+func orderedMapKeys(m map[string]j.Value) []string {
+  keys := make([]string, len(m))
+  i := 0
+  for key := range m {
+    keys[i] = key
+    i++
+  }
+  sort.Strings(keys)
+  return keys
+}
+
+type IRow interface {
+  Scan(dest ...interface{}) error
+  StructScan(dest interface{}) error
 }
