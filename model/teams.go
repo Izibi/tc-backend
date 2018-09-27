@@ -9,6 +9,7 @@ import (
   "strings"
   "github.com/go-errors/errors"
   "github.com/itchyny/base58-go"
+  "github.com/jmoiron/sqlx"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -35,7 +36,7 @@ func (m *Model) CreateTeam(userId string, contestId string, teamName string) err
   var err error
 
   /* Verify the user has access to the contest. */
-  ok, err := m.testUserContestAccess(userId, contestId)
+  ok, err := m.CanUserAccessContest(userId, contestId)
   if err != nil { return err }
   if !ok { return errors.Errorf("access denied") }
 
@@ -81,7 +82,7 @@ func (m *Model) JoinTeam(userId string, contestId string, accessCode string) err
   var err error
 
   /* Verify the user has access to the contest. */
-  ok, err := m.testUserContestAccess(userId, contestId)
+  ok, err := m.CanUserAccessContest(userId, contestId)
   if err != nil { return err }
   if !ok { return errors.Errorf("access denied") }
 
@@ -251,6 +252,19 @@ func (m *Model) loadUserContestTeam(userId string, contestId string, f Facets) (
   return m.loadTeamRow(m.db.QueryRowx(
     `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
      WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId), f)
+}
+
+func (m *Model) loadTeams(ids []string) error {
+  query, args, err := sqlx.In(`SELECT * FROM teams WHERE id IN (?)`, ids)
+  if err != nil { return errors.Wrap(err, 0) }
+  rows, err := m.db.Queryx(query, args...)
+  if err != nil { return errors.Wrap(err, 0) }
+  defer rows.Close()
+  for rows.Next() {
+    _, err = m.loadTeamRow(rows, BaseFacet)
+    if err != nil { return err }
+  }
+  return nil
 }
 
 func (m *Model) loadTeamRow(row IRow, f Facets) (*Team, error) {

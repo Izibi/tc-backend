@@ -45,7 +45,7 @@ func (m *Model) ViewUserContests(userId string) error {
 func (m *Model) ViewUserContest(userId string, contestId string) error {
   var err error
   /* verify user has access to contest */
-  ok, err := m.testUserContestAccess(userId, contestId)
+  ok, err := m.CanUserAccessContest(userId, contestId)
   if err != nil { return err }
   if !ok { return errors.Errorf("access denied") }
 
@@ -76,7 +76,7 @@ func (m *Model) ViewUserContestTeam(userId string, contestId string) error {
   return nil
 }
 
-func (m *Model) testUserContestAccess(userId string, contestId string) (bool, error) {
+func (m *Model) CanUserAccessContest(userId string, contestId string) (bool, error) {
   row := m.db.QueryRow(
     `SELECT count(c.id) FROM user_badges ub, contests c
      WHERE c.id = ? AND ub.user_id = ? AND ub.badge_id = c.required_badge_id`, contestId, userId)

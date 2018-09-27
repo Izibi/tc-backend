@@ -15,6 +15,7 @@ type Model struct {
   entities map[string]j.Value
   tasks LoadSet
   users LoadSet
+  teams LoadSet
 }
 
 func New (db *sql.DB) *Model {

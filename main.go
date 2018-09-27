@@ -210,6 +210,17 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     resp.Send(m)
   })
 
+  backend.GET("/Contests/:contestId/Chains", func(c *gin.Context) {
+    resp := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { resp.BadUser(); return }
+    contestId := c.Param("contestId")
+    m := model.New(db)
+    err := m.ViewChains(userId, contestId, model.ChainFilters{})
+    if err != nil { resp.Error(err); return }
+    resp.Send(m)
+  })
+
 /*
   // Authorized group (uses gin.BasicAuth() middleware)
   // Same as:
