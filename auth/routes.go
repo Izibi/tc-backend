@@ -11,7 +11,6 @@ import (
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
-  "github.com/json-iterator/go"  // https://godoc.org/github.com/json-iterator/go
   "golang.org/x/oauth2"
 
   j "tezos-contests.izibi.com/backend/jase"
@@ -20,15 +19,15 @@ import (
 
 )
 
-func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
+func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
 
   oauthConf := &oauth2.Config{
-      ClientID: config.Get("oauth_client_id").ToString(),
-      ClientSecret: config.Get("oauth_secret").ToString(),
-      RedirectURL: config.Get("oauth_callback_url").ToString(),
+      ClientID: config.ClientID,
+      ClientSecret: config.ClientSecret,
+      RedirectURL: config.RedirectURL,
       Endpoint: oauth2.Endpoint{
-        AuthURL: config.Get("oauth_auth_url").ToString(),
-        TokenURL: config.Get("oauth_token_url").ToString(),
+        AuthURL: config.AuthURL,
+        TokenURL: config.TokenURL,
       },
       Scopes: []string{"account"},
   }
@@ -88,7 +87,7 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err); return }
 
     client := oauthConf.Client(c, token)
-    resp, err := client.Get(config.Get("profile_url").ToString())
+    resp, err := client.Get(config.ProfileURL)
     if err != nil { c.AbortWithError(500, err); return }
     defer resp.Body.Close()
 
@@ -110,7 +109,7 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{
       Message: messageStr,
-      Target: config.Get("frontend_origin").ToString(),
+      Target: config.FrontendOrigin,
     }
     c.HTML(http.StatusOK, "loginComplete", data)
   })
@@ -131,8 +130,8 @@ func SetupRoutes(r gin.IRoutes, config jsoniter.Any, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err) }
     data := logoutCompleteData{
       Message: messageStr,
-      Target: config.Get("frontend_origin").ToString(),
-      LogoutUrl: config.Get("logout_url").ToString(),
+      Target: config.FrontendOrigin,
+      LogoutUrl: config.LogoutURL,
     }
 
     c.HTML(http.StatusOK, "logoutComplete", data)

@@ -17,16 +17,28 @@ import (
   "github.com/gin-contrib/sessions/cookie"
   "github.com/gin-contrib/cors"
   "github.com/utrack/gin-csrf"
-  "github.com/json-iterator/go"  // https://godoc.org/github.com/json-iterator/go
   _ "github.com/go-sql-driver/mysql"
   //"golang.org/x/net/context"
+  "gopkg.in/yaml.v2"
 
   //j "tezos-contests.izibi.com/backend/jase"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
+  "tezos-contests.izibi.com/backend/game"
 
 )
+
+type Config struct {
+  Listen string `yaml:"listen"`
+  MountPath string `yaml:"mount_path"`
+  SessionSecret string `yaml:"session_secret"`
+  CsrfSecret string `yaml:"csrf_secret"`
+  DataSource string `yaml:"data_source"`
+  FrontendOrigin string `yaml:"frontend_origin"`
+  Auth auth.Config `yaml:"auth"`
+  Game game.Config `yaml:"game"`
+}
 
 func buildRootTemplate() *template.Template {
   t := template.New("")
@@ -37,11 +49,11 @@ func buildRootTemplate() *template.Template {
   return t
 }
 
-func setupRouter(config jsoniter.Any) *gin.Engine {
+func setupRouter(config Config) *gin.Engine {
   var err error
   var db *sql.DB
 
-  db, err = sql.Open("mysql", config.Get("db").ToString())
+  db, err = sql.Open("mysql", config.DataSource)
   if err != nil {
     log.Panicf("Failed to connect to database: %s\n", err)
   }
@@ -51,7 +63,7 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   r := gin.Default()
   r.SetHTMLTemplate(buildRootTemplate())
 
-  store := cookie.NewStore([]byte(config.Get("secret").ToString()))
+  store := cookie.NewStore([]byte(config.SessionSecret))
   store.Options(sessions.Options{
     Path:     "/" /* TODO: mount path */,
     Domain:   "",
@@ -60,16 +72,18 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
     HttpOnly: false,
   })
   r.Use(sessions.Sessions("session_name", store))
+  /* TODO: re-enable
   r.Use(csrf.Middleware(csrf.Options{
-        Secret: config.Get("csrf_secret").ToString(),
+        Secret: config.CsrfSecret,
         ErrorFunc: func(c *gin.Context) {
           c.JSON(http.StatusOK, gin.H{"error": "CSRF token mismatch"})
           c.Abort()
         },
     }))
+  */
   r.Use(cors.New(cors.Config{
     AllowOrigins:     []string{
-      config.Get("frontend_origin").ToString(),
+      config.FrontendOrigin,
     },
     AllowMethods:     []string{"GET", "POST"},
     AllowHeaders:     []string{"Origin"},
@@ -84,14 +98,15 @@ func setupRouter(config jsoniter.Any) *gin.Engine {
   })
 
   var backend gin.IRoutes
-  mountPath := config.Get("mount_path").ToString()
+  mountPath := config.MountPath
   if mountPath == "" {
     backend = r
   } else {
     backend = r.Group(mountPath)
   }
 
-  auth.SetupRoutes(backend, config, db)
+  auth.SetupRoutes(backend, config.Auth, db)
+  game.SetupRoutes(backend, config.Game)
 
   backend.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
@@ -251,9 +266,17 @@ func main() {
 
   var err error
   var configFile []byte
-  configFile, err = ioutil.ReadFile("config.json")
-  if err != nil { panic(err); return }
-  config := jsoniter.Get(configFile)
+  configFile, err = ioutil.ReadFile("config.yaml")
+  if err != nil { panic(err) }
+  var config Config
+  err = yaml.Unmarshal(configFile, &config)
+  if err != nil { panic(err) }
+  if config.Game.BlockStorePath == "" {
+    // TODO
+  }
+  if config.Auth.FrontendOrigin == "" {
+    config.Auth.FrontendOrigin = config.FrontendOrigin
+  }
 
   /*
   f, _ := os.Create("gin.log")
@@ -262,5 +285,5 @@ func main() {
   */
 
   r := setupRouter(config)
-  r.Run(config.Get("listen").ToString())
+  r.Run(config.Listen)
 }

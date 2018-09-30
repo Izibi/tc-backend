@@ -13,7 +13,7 @@ import (
 
 type recoder struct {
   dec *json.Decoder
-  out *bytes.Buffer
+  out io.Writer
   nesting *stack.Stack
   firstItem bool
   depth int
@@ -155,21 +155,22 @@ func (r *recoder) Key() error {
   }
 }
 
-func (r *recoder) Bytes() []byte {
-  return r.out.Bytes()
-}
-
-func Pretty(b []byte) ([]byte, error) {
-  r := recoder{
-    dec: json.NewDecoder(bytes.NewReader(b)),
-    out: &bytes.Buffer{},
+func Pretty(r io.Reader, w io.Writer) error {
+  rec := recoder{
+    dec: json.NewDecoder(r),
+    out: w,
     nesting: stack.New(),
     firstItem: false,
     depth: 0,
   }
-  err := r.Value()
+  return rec.Value()
+}
+
+func PrettyBytes(b []byte) ([]byte, error) {
+  var bb bytes.Buffer
+  err := Pretty(bytes.NewReader(b), &bb)
   if err != nil {
     return []byte{}, err
   }
-  return r.Bytes(), nil
+  return bb.Bytes(), nil
 }

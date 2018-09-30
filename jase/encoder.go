@@ -35,3 +35,19 @@ func ToString(v Value) (string, error) {
   if err != nil { return "", err }
   return string(bs), nil
 }
+
+func ToPrettyBytes(v Value) ([]byte, error) {
+  var err error
+  var bs []byte
+  bs, err = ToBytes(v)
+  if err != nil { return []byte{}, err }
+  bs, err = PrettyBytes(bs)
+  if err != nil { return []byte{}, err }
+  return bs, nil
+}
+
+func ToPrettyString(v Value) (string, error) {
+  bs, err := ToPrettyBytes(v)
+  if err != nil { return "", err }
+  return string(bs), nil
+}
