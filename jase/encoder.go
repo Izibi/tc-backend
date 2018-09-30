@@ -8,7 +8,7 @@ import (
 )
 
 type Value interface {
-  Write(w io.Writer) (int, error)
+  io.WriterTo
 }
 
 type IObject interface {
@@ -22,10 +22,10 @@ type IArray interface {
 }
 
 func ToBytes(v Value) ([]byte, error) {
-  n, _ := v.Write(ioutil.Discard)
+  n, _ := v.WriteTo(ioutil.Discard)
   b := bytes.NewBuffer(make([]byte, n))
   b.Reset()
-  _, err := v.Write(b)
+  _, err := v.WriteTo(b)
   if err != nil { return []byte{}, err }
   return b.Bytes(), nil
 }

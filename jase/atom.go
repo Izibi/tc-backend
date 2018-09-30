@@ -10,8 +10,9 @@ type atom struct {
   raw []byte
 }
 
-func (a *atom) Write(w io.Writer) (int, error) {
-  return w.Write(a.raw)
+func (a *atom) WriteTo(w io.Writer) (int64, error) {
+  n, err := w.Write(a.raw)
+  return int64(n), err
 }
 
 func Raw(val []byte) Value {
@@ -34,4 +35,8 @@ func Int(i int) Value {
 
 func Uint(u uint) Value {
   return Raw([]byte(strconv.FormatUint(uint64(u), 10)))
+}
+
+func Uint64(u uint64) Value {
+  return Raw([]byte(strconv.FormatUint(u, 10)))
 }
