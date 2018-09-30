@@ -18,7 +18,7 @@ import (
 func (r *Response) Error(err error) {
   r.context.Status(http.StatusOK)
   r.context.Stream(func (w io.Writer) bool {
-    JError(err).Write(w)
+    JError(err).WriteTo(w)
     return false
   })
 }

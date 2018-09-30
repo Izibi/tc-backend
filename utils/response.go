@@ -28,7 +28,7 @@ func (r *Response) Send(m *model.Model) {
     res := j.Object()
     res.Prop("result", m.Result())
     res.Prop("entities", m.Entities())
-    res.Write(w)
+    res.WriteTo(w)
     return false
   })
 }
