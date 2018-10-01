@@ -39,16 +39,15 @@ func (m *Model) Has(key string) bool {
   return ok
 }
 
-func (m *Model) Result() j.IObject {
-  return m.result
-}
-
-func (m *Model) Entities() j.IObject {
+func (m *Model) Flat() j.Value {
+  res := j.Object()
+  res.Prop("result", m.result)
   entities := j.Object()
   for _, key := range orderedMapKeys(m.entities) {
     entities.Prop(key, m.entities[key])
   }
-  return entities
+  res.Prop("entities", entities)
+  return res
 }
 
 func orderedMapKeys(m map[string]j.Value) []string {

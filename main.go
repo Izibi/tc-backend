@@ -158,7 +158,7 @@ func setupRouter(config Config) *gin.Engine {
     if err != nil { resp.Error(err); return }
     err = m.ViewUserContests(id)
     if err != nil { resp.Error(err); return }
-    resp.Send(m)
+    resp.Send(m.Flat())
   })
 
 /*

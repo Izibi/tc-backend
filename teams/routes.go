@@ -20,7 +20,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     m := model.New(db)
     err = m.LeaveTeam(teamId, userId)
     if err != nil { resp.Error(err); return }
-    resp.Send(m)
+    resp.Send(m.Flat())
   })
 
   r.POST("/Teams/:teamId/AccessCode", func(c *gin.Context) {
@@ -32,7 +32,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     m := model.New(db)
     err = m.RenewTeamAccessCode(teamId, userId)
     if err != nil { resp.Error(err); return }
-    resp.Send(m)
+    resp.Send(m.Flat())
   })
 
   r.POST("/Teams/:teamId/Update", func(c *gin.Context) {
@@ -47,7 +47,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     m := model.New(db)
     err = m.UpdateTeam(teamId, userId, arg)
     if err != nil { resp.Error(err); return }
-    resp.Send(m)
+    resp.Send(m.Flat())
   })
 
 }

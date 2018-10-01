@@ -42,7 +42,7 @@ func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
       err := m.ViewUser(userId)
       if err != nil { resp.Error(err); return }
     }
-    resp.Send(m)
+    resp.Send(m.Flat())
   })
 
   r.GET("/Login", func (c *gin.Context) {
