@@ -23,7 +23,7 @@ func (b *SetupBlock) Marshal() j.IObject {
 func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash string, err error) {
 
   params, err = j.PrettyBytes(params)
-  if err != nil { return }
+  if err != nil { err = errors.Wrap(err, 0); return }
 
   block := SetupBlock{
     Params: hashResource(params),
@@ -42,7 +42,7 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
 
   blockPath := store.blockDir(hash)
   err = ioutil.WriteFile(filepath.Join(blockPath, "params.json"), params, 0644)
-  if err != nil { return }
+  if err != nil { err = errors.Wrap(err, 0); return }
 
   /* Compile the setup code. */
   cmd := newCommand(
