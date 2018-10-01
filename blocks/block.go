@@ -24,6 +24,7 @@ func (store *Store) IsBlock(hash string) bool {
 }
 
 func (store *Store) readBlock(hash string) (block Block, err error) {
+  if !validateHash(hash) { return nil, errors.New("invalid hash") }
   blockPath := filepath.Join(store.blockDir(hash), "block.json")
   blockBytes, err := ioutil.ReadFile(blockPath)
   if err != nil { err = errors.Wrap(err, 0); return }

@@ -4,10 +4,17 @@ package blocks
 import (
   "io"
   "os"
+  "regexp"
   "crypto/sha1"
   "crypto/sha256"
   "encoding/base64"
 )
+
+var reHash = regexp.MustCompile("^[0-9A-Za-z_-]*$")
+
+func validateHash(hash string) bool {
+  return len(hash) == 27 && reHash.Match([]byte(hash))
+}
 
 func hashBlock(bs []byte) string {
   hasher := sha1.New()
