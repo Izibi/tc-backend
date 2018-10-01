@@ -1,0 +1,75 @@
+
+package blockchain
+
+import (
+  "path/filepath"
+  "io/ioutil"
+  "os"
+  "github.com/go-errors/errors"
+  j "tezos-contests.izibi.com/backend/jase"
+)
+
+type SetupBlock struct {
+  BlockBase
+  Params string `json:"params"`
+}
+
+func (b *SetupBlock) Marshal() j.IObject {
+  res := b.marshalBase()
+  res.Prop("params", j.String(b.Params))
+  return res
+}
+
+func (store *Store) MakeSetupBlock (parentHash string, params []byte) (hash string, err error) {
+
+  params, err = j.PrettyBytes(params)
+  if err != nil { return }
+
+  block := SetupBlock{
+    Params: hashResource(params),
+  }
+  err = store.chainBlock(&block.BlockBase, "setup", parentHash)
+  if err != nil { return }
+  encodedBlock := block.Marshal()
+  hash, err = store.writeBlock(encodedBlock)
+  if os.IsExist(err) { return hash, nil }
+  if err != nil { return }
+  defer func () {
+    if err != nil {
+      store.deleteBlock(hash)
+    }
+  }()
+
+  blockPath := store.blockDir(hash)
+  err = ioutil.WriteFile(filepath.Join(blockPath, "params.json"), params, 0644)
+  if err != nil { return }
+
+  /* Compile the setup code. */
+  cmd := newCommand(
+    store.taskToolsPath(block.Task),
+    "-t", store.blockDir(block.Task),
+    "-p", store.blockDir(block.Protocol),
+    "-b", store.blockDir(hash),
+    "build_setup")
+  err = cmd.Run(nil)
+  // TODO: error {error: "error building setup", details: buildOutcome.stderr}
+  if err != nil { return }
+
+  /* Generate the initial state. */
+  cmd = newCommand(
+    store.taskToolsPath(block.Task),
+    "-t", store.blockDir(block.Task),
+    "-p", store.blockDir(block.Protocol),
+    "-b", store.blockDir(hash),
+    "run_setup")
+  /* task_tool looks for params.json in its current directory */
+  cmd.Dir(blockPath)
+  err = cmd.Run(encodedBlock)
+  if err != nil { err = errors.Wrap(err, 0); return }
+  // TODO {error: "error running setup", details: runOutcome.stderr};
+
+  err = store.finalizeBlock(hash, &cmd.Stdout)
+  if err != nil { return }
+
+  return
+}
