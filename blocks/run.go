@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "fmt"
@@ -16,7 +16,7 @@ type command struct {
   Stderr bytes.Buffer
 }
 
-func newCommand (name string, args ...string) *command {
+func newCommand(name string, args ...string) *command {
   fmt.Printf("RUN %s %v\n", name, args)
   res := new(command)
   res.name = name

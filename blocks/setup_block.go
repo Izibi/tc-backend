@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "path/filepath"
@@ -20,7 +20,7 @@ func (b *SetupBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeSetupBlock (parentHash string, params []byte) (hash string, err error) {
+func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash string, err error) {
 
   params, err = j.PrettyBytes(params)
   if err != nil { return }

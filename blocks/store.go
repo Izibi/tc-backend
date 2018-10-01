@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "path/filepath"

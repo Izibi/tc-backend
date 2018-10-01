@@ -29,7 +29,7 @@ import (
   "tezos-contests.izibi.com/backend/teams"
   "tezos-contests.izibi.com/backend/contests"
   "tezos-contests.izibi.com/backend/games"
-  "tezos-contests.izibi.com/backend/blockchain"
+  "tezos-contests.izibi.com/backend/blocks"
 
 )
 
@@ -43,7 +43,7 @@ type Config struct {
   ApiVersion string `yaml:"api_version"`
   Auth auth.Config `yaml:"auth"`
   Game games.Config `yaml:"game"`
-  Blockchain blockchain.Store `yaml:"blockchain"`
+  Blocks blocks.Store `yaml:"blocks"`
 }
 
 func buildRootTemplate() *template.Template {
@@ -117,7 +117,7 @@ func setupRouter(config Config) *gin.Engine {
   games.SetupRoutes(backend, config.Game, db)
   teams.SetupRoutes(backend, db)
   contests.SetupRoutes(backend, db)
-  blockchain.SetupRoutes(backend, &config.Blockchain)
+  blocks.SetupRoutes(backend, &config.Blocks)
 
   r.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")
@@ -196,7 +196,7 @@ func main() {
   var config Config
   err = yaml.Unmarshal(configFile, &config)
   if err != nil { panic(err) }
-  if config.Blockchain.Path == "" {
+  if config.Blocks.Path == "" {
     // TODO
   }
   if config.Auth.FrontendOrigin == "" {

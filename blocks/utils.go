@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "io"
@@ -9,13 +9,13 @@ import (
   "encoding/base64"
 )
 
-func hashBlock (bs []byte) string {
+func hashBlock(bs []byte) string {
   hasher := sha1.New()
   hasher.Write(bs)
   return base64.RawURLEncoding.EncodeToString(hasher.Sum(nil))
 }
 
-func hashResource (bs []byte) string {
+func hashResource(bs []byte) string {
   hasher := sha256.New()
   hasher.Write(bs)
   return base64.URLEncoding.EncodeToString(hasher.Sum(nil))

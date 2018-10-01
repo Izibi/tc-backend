@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "bufio"
@@ -14,7 +14,7 @@ import (
 
 var reMessagePrefix = regexp.MustCompile("^Prefix: (.*)$")
 
-func writeMessages (w io.Writer, r io.Reader) error {
+func writeMessages(w io.Writer, r io.Reader) error {
   var err error
   scanner := bufio.NewScanner(r)
   if scanner.Scan() {

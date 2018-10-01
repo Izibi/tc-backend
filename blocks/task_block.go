@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "os"
@@ -17,7 +17,7 @@ func (b *TaskBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeTaskBlock (parentHash string, identifier string) (hash string, err error) {
+func (store *Store) MakeTaskBlock(parentHash string, identifier string) (hash string, err error) {
 
   block := TaskBlock{
     Identifier: identifier,

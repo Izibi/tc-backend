@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "encoding/json"
@@ -79,7 +79,7 @@ func (store *Store) writeBlock(block j.Value) (hash string, err error) {
   return
 }
 
-func (store *Store) finalizeBlock (hash string, block Block, stdout io.Reader) error {
+func (store *Store) finalizeBlock(hash string, block Block, stdout io.Reader) error {
 
   fmt.Printf("[store] finalize %s\n", hash)
   blockDir := store.blockDir(hash)

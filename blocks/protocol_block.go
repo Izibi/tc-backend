@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   "encoding/json"
@@ -23,7 +23,7 @@ func (b *ProtocolBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeProtocolBlock (parentHash string, intf, impl []byte) (hash string, err error) {
+func (store *Store) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, err error) {
 
   block := ProtocolBlock{
     Interface: hashResource(intf),

@@ -1,5 +1,5 @@
 
-package blockchain
+package blocks
 
 import (
   j "tezos-contests.izibi.com/backend/jase"

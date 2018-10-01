@@ -14,7 +14,7 @@ auth:
     logout_url: "https://login.france-ioi.org/logout"
 game:
     api_version: "3.0.0"
-blockchain:
+blocks:
     store_path: "/srv/store"
     task_tools_cmd: "task_tools.bc"
     task_helper_cmd: "task_helper.js"
