@@ -2,7 +2,10 @@
 package model
 
 import (
+  "crypto/rand"
   "database/sql"
+  "encoding/base64"
+  "fmt"
   "time"
   "github.com/go-sql-driver/mysql"
   "github.com/go-errors/errors"
@@ -14,9 +17,6 @@ type Game struct {
   Game_key string
   Created_at time.Time
   Updated_at time.Time
-  Task_block string
-  Protocol_block string
-  Setup_block string
   First_block string
   Last_block string
   Started_at mysql.NullTime
@@ -34,15 +34,24 @@ type GamePlayer struct {
   Commands string
 }
 
-func (m *Model) addGame(game Game) error {
+func (m *Model) CreateGame(firstBlock string) (string, error) {
   var err error
+  gameKey, err := generateKey()
+  if err != nil { return "", errors.Wrap(err, 0) }
   _, err = m.db.Exec(
-    `INSERT INTO games (game_key, task_block, protocol_block, setup_block, first_block, last_block, current_round)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-     game.Game_key, game.Task_block, game.Protocol_block, game.Setup_block, game.First_block, game.Last_block, game.Current_round)
-  if err != nil { return errors.Wrap(err, 0) }
-  /* TODO: set id in game */
-  return nil
+    `INSERT INTO games (game_key, first_block, last_block, current_round)
+     VALUES (?, ?, ?, 0)`, gameKey, firstBlock, firstBlock)
+  if err != nil { return "", errors.Wrap(err, 0) }
+  return gameKey, nil
+}
+
+func (m *Model) ViewGame(gameKey string) (j.Value, error) {
+  game, err := m.loadGame(gameKey, NullFacet)
+  if err != nil { return j.Null, err }
+  if game == nil {
+    return j.Null, nil
+  }
+  return viewGame(game), nil
 }
 
 func (m *Model) addPlayerToGame (gameKey string, teamId string, teamPlayer int, commands string) error {
@@ -72,7 +81,7 @@ func (m *Model) setPlayerCommands (gameKey string, teamId string, teamPlayer int
   return nil
 }
 
-func (m *Model) loadTeamCommands (gameKey string, teamId string, f Facets) ([]GamePlayer, error) {
+func (m *Model) loadGamePlayers (gameKey string, teamId string, f Facets) ([]GamePlayer, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT gp.* FROM game_players gp
@@ -117,18 +126,7 @@ func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
   if err == sql.ErrNoRows { return nil, nil }
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
-    view := j.Object()
-    view.Prop("key", j.String(res.Game_key))
-    timeProp(view, "createdAt", res.Created_at)
-    timeProp(view, "updatedAt", res.Updated_at)
-    view.Prop("taskBlock", j.String(res.Task_block))
-    view.Prop("protocolBlock", j.String(res.Protocol_block))
-    view.Prop("setupBlock", j.String(res.Setup_block))
-    view.Prop("firstBlock", j.String(res.First_block))
-    view.Prop("lastBlock", j.String(res.Last_block))
-    nullTimeProp(view, "startedAt", res.Started_at)
-    nullTimeProp(view, "roundEndsAt", res.Round_ends_at)
-    view.Prop("currentRound", j.Int(res.Current_round))
+    m.Add(fmt.Sprintf("games %s", res.Id), viewGame(&res))
   }
   return &res, nil
 }
@@ -147,4 +145,24 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
     view.Prop("commands", j.String(res.Commands))
   }
   return &res, nil
+}
+
+func generateKey() (string, error) {
+  bs := make([]byte, 32, 32)
+  _, err := rand.Read(bs)
+  if err != nil { return "", err }
+  return base64.RawURLEncoding.EncodeToString(bs[:]), nil
+}
+
+func viewGame(game *Game) j.IObject {
+  view := j.Object()
+  view.Prop("key", j.String(game.Game_key))
+  timeProp(view, "createdAt", game.Created_at)
+  timeProp(view, "updatedAt", game.Updated_at)
+  view.Prop("firstBlock", j.String(game.First_block))
+  view.Prop("lastBlock", j.String(game.Last_block))
+  nullTimeProp(view, "startedAt", game.Started_at)
+  nullTimeProp(view, "roundEndsAt", game.Round_ends_at)
+  view.Prop("currentRound", j.Int(game.Current_round))
+  return view
 }

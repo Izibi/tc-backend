@@ -16,6 +16,13 @@ type Block interface {
   Base() *BlockBase
 }
 
+func (store *Store) IsBlock(hash string) bool {
+  if !validateHash(hash) { return false }
+  blockDir := store.blockDir(hash)
+  fi, err := os.Stat(blockDir)
+  return err != nil && fi.IsDir()
+}
+
 func (store *Store) readBlock(hash string) (block Block, err error) {
   blockPath := filepath.Join(store.blockDir(hash), "block.json")
   blockBytes, err := ioutil.ReadFile(blockPath)

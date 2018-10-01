@@ -114,10 +114,10 @@ func setupRouter(config Config) *gin.Engine {
   }
 
   auth.SetupRoutes(backend, config.Auth, db)
-  games.SetupRoutes(backend, config.Game, db)
   teams.SetupRoutes(backend, db)
   contests.SetupRoutes(backend, db)
   blocks.SetupRoutes(backend, &config.Blocks)
+  games.SetupRoutes(backend, config.Game, &config.Blocks, db)
 
   r.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")

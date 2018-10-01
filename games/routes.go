@@ -5,18 +5,42 @@ import (
   "io"
   "database/sql"
   "github.com/gin-gonic/gin"
+  "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/utils"
+  "tezos-contests.izibi.com/backend/blocks"
 )
 
 type Config struct {}
 
-func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
+func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) {
 
   r.POST("/Games", func (c *gin.Context) {
-    // newGame(config, req.body)
+    resp := utils.NewResponse(c)
+    var err error
+    var body struct {
+      FirstBlock string `json:"first_block"`
+    }
+    err = c.ShouldBindJSON(&body)
+    if err != nil { resp.Error(err); return }
+    if !store.IsBlock(body.FirstBlock) {
+      resp.StringError("bad first block")
+      return
+    }
+    m := model.New(db)
+    gameKey, err := m.CreateGame(body.FirstBlock)
+    if err != nil { resp.Error(err); return }
+    game, err := m.ViewGame(gameKey)
+    if err != nil { resp.Error(err); return }
+    resp.Send(game)
   })
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
-    // showGame(config, req.params.gameKey)
+    resp := utils.NewResponse(c)
+    gameKey := c.Param("gameKey")
+    m := model.New(db)
+    game, err := m.ViewGame(gameKey)
+    if err != nil { resp.Error(err); return }
+    resp.Send(game)
   })
 
   r.GET("/Games/:gameKey/Events", func (c *gin.Context) {
