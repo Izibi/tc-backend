@@ -68,7 +68,7 @@ func (store *Store) MakeSetupBlock (parentHash string, params []byte) (hash stri
   if err != nil { err = errors.Wrap(err, 0); return }
   // TODO {error: "error running setup", details: runOutcome.stderr};
 
-  err = store.finalizeBlock(hash, &cmd.Stdout)
+  err = store.finalizeBlock(hash, &block, &cmd.Stdout)
   if err != nil { return }
 
   return

@@ -79,7 +79,7 @@ func (store *Store) writeBlock(block j.Value) (hash string, err error) {
   return
 }
 
-func (store *Store) finalizeBlock (hash string, stdout io.Reader) error {
+func (store *Store) finalizeBlock (hash string, block Block, stdout io.Reader) error {
 
   fmt.Printf("[store] finalize %s\n", hash)
   blockDir := store.blockDir(hash)
@@ -100,9 +100,10 @@ func (store *Store) finalizeBlock (hash string, stdout io.Reader) error {
   err = ioutil.WriteFile(filepath.Join(blockDir, "state.json"), state, 0644)
   if err != nil { return errors.Wrap(err, 0) }
 
-  /* TODO: obtain the derived task files, by POSTing the block's URL? to the
-     task webservice URL (from store), extracting the returned zip into the
-     block directory. */
+  /* Run the helper. */
+  cmd := newCommand(store.taskHelperPath(block.Base().Task), store.blockDir(hash))
+  err = cmd.Run(nil)
+  if err != nil { return errors.Wrap(err, 0) }
 
   return nil
 }
