@@ -18,6 +18,7 @@ import (
   "github.com/gin-contrib/cors"
   "github.com/utrack/gin-csrf"
   _ "github.com/go-sql-driver/mysql"
+  "github.com/Masterminds/semver"
   //"golang.org/x/net/context"
   "gopkg.in/yaml.v2"
 
@@ -25,6 +26,8 @@ import (
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
+  "tezos-contests.izibi.com/backend/teams"
+  "tezos-contests.izibi.com/backend/contests"
   "tezos-contests.izibi.com/backend/game"
   "tezos-contests.izibi.com/backend/blockchain"
 
@@ -37,6 +40,7 @@ type Config struct {
   CsrfSecret string `yaml:"csrf_secret"`
   DataSource string `yaml:"data_source"`
   FrontendOrigin string `yaml:"frontend_origin"`
+  ApiVersion string `yaml:"api_version"`
   Auth auth.Config `yaml:"auth"`
   Game game.Config `yaml:"game"`
   Blockchain blockchain.Store `yaml:"blockchain"`
@@ -54,6 +58,8 @@ func buildRootTemplate() *template.Template {
 func setupRouter(config Config) *gin.Engine {
   var err error
   var db *sql.DB
+
+  apiVersion := semver.MustParse(config.ApiVersion)
 
   db, err = sql.Open("mysql", config.DataSource)
   if err != nil {
@@ -108,7 +114,32 @@ func setupRouter(config Config) *gin.Engine {
   }
 
   auth.SetupRoutes(backend, config.Auth, db)
-  game.SetupRoutes(backend, config.Game, &config.Blockchain)
+  game.SetupRoutes(backend, config.Game, db)
+  teams.SetupRoutes(backend, db)
+  contests.SetupRoutes(backend, db)
+  blockchain.SetupRoutes(backend, &config.Blockchain)
+
+  r.GET("/Time", func (c *gin.Context) {
+    reqVersion := c.GetHeader("X-Api-Version")
+    req, err := semver.NewConstraint(reqVersion)
+    if err != nil {
+      c.String(400, "Client sent a bad semver constraint")
+      return;
+    }
+    if !req.Check(apiVersion) {
+      c.String(400, "Client is incompatible with Server API %s", apiVersion)
+      return
+    }
+    type Response struct {
+      ServerTime string `json:"server_time"`
+    }
+    res := Response{ServerTime: time.Now().Format(time.RFC3339)}
+    c.JSON(200, &res)
+  })
+
+  r.POST("/Keypair", func (c *gin.Context) {
+    // ssbKeys.generate()
+  })
 
   backend.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
@@ -126,114 +157,6 @@ func setupRouter(config Config) *gin.Engine {
     err = m.ViewUser(id)
     if err != nil { resp.Error(err); return }
     err = m.ViewUserContests(id)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.GET("/Contests/:contestId", func(c *gin.Context) {
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    m := model.New(db)
-    contestId := c.Param("contestId")
-    err := m.ViewUserContest(userId, contestId)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.GET("/Contests/:contestId/Team", func(c *gin.Context) {
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    m := model.New(db)
-    contestId := c.Param("contestId")
-    err := m.ViewUserContestTeam(userId, contestId)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.POST("/Contests/:contestId/CreateTeam", func(c *gin.Context) {
-    var err error
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    contestId := c.Param("contestId")
-    type Body struct {
-      TeamName string `json:"teamName"`
-    }
-    var body Body
-    err = c.ShouldBindJSON(&body)
-    if err != nil { resp.Error(err); return }
-    m := model.New(db)
-    err = m.CreateTeam(userId, contestId, body.TeamName)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.POST("/Contests/:contestId/JoinTeam", func(c *gin.Context) {
-    var err error
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    contestId := c.Param("contestId")
-    type Body struct {
-      AccessCode string `json:"accessCode"`
-    }
-    var body Body
-    err = c.ShouldBindJSON(&body)
-    if err != nil { resp.Error(err); return }
-    m := model.New(db)
-    err = m.JoinTeam(userId, contestId, body.AccessCode)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.POST("/Teams/:teamId/Leave", func(c *gin.Context) {
-    var err error
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    teamId := c.Param("teamId")
-    m := model.New(db)
-    err = m.LeaveTeam(teamId, userId)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.POST("/Teams/:teamId/AccessCode", func(c *gin.Context) {
-    var err error
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    teamId := c.Param("teamId")
-    m := model.New(db)
-    err = m.RenewTeamAccessCode(teamId, userId)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.POST("/Teams/:teamId/Update", func(c *gin.Context) {
-    var err error
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    teamId := c.Param("teamId")
-    var arg model.UpdateTeamArg
-    err = c.ShouldBindJSON(&arg)
-    if err != nil { resp.Error(err); return }
-    m := model.New(db)
-    err = m.UpdateTeam(teamId, userId, arg)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m)
-  })
-
-  backend.GET("/Contests/:contestId/Chains", func(c *gin.Context) {
-    resp := utils.NewResponse(c)
-    userId, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
-    contestId := c.Param("contestId")
-    m := model.New(db)
-    err := m.ViewChains(userId, contestId, model.ChainFilters{})
     if err != nil { resp.Error(err); return }
     resp.Send(m)
   })
