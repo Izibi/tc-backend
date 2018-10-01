@@ -10,16 +10,18 @@ import (
 )
 
 type Game struct {
+  Id string
   Game_key string
   Created_at time.Time
   Updated_at time.Time
+  Task_block string
+  Protocol_block string
+  Setup_block string
+  First_block string
+  Last_block string
   Started_at mysql.NullTime
   Round_ends_at mysql.NullTime
-  First_block string
-  Current_block string
   Current_round int
-  Game_params string /*json*/
-  Task_params string /*json*/
 }
 
 type GamePlayer struct {
@@ -32,12 +34,14 @@ type GamePlayer struct {
   Commands string
 }
 
-func (m *Model) addGame(key string, gameParams string, taskParams string, firstBlock string) error {
+func (m *Model) addGame(game Game) error {
   var err error
   _, err = m.db.Exec(
-    `INSERT INTO games (game_key, first_block, current_block, game_params, task_params)
-     VALUES (?, ?, ?, ?, ?)`, key, firstBlock, firstBlock, gameParams, taskParams)
+    `INSERT INTO games (game_key, task_block, protocol_block, setup_block, first_block, last_block, current_round)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     game.Game_key, game.Task_block, game.Protocol_block, game.Setup_block, game.First_block, game.Last_block, game.Current_round)
   if err != nil { return errors.Wrap(err, 0) }
+  /* TODO: set id in game */
   return nil
 }
 
@@ -117,10 +121,14 @@ func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
     view.Prop("key", j.String(res.Game_key))
     timeProp(view, "createdAt", res.Created_at)
     timeProp(view, "updatedAt", res.Updated_at)
+    view.Prop("taskBlock", j.String(res.Task_block))
+    view.Prop("protocolBlock", j.String(res.Protocol_block))
+    view.Prop("setupBlock", j.String(res.Setup_block))
+    view.Prop("firstBlock", j.String(res.First_block))
+    view.Prop("lastBlock", j.String(res.Last_block))
     nullTimeProp(view, "startedAt", res.Started_at)
     nullTimeProp(view, "roundEndsAt", res.Round_ends_at)
-    view.Prop("firstBlock", j.String(res.First_block))
-    view.Prop("currentBlock", j.String(res.Current_block))
+    view.Prop("currentRound", j.Int(res.Current_round))
   }
   return &res, nil
 }

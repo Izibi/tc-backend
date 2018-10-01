@@ -26,6 +26,7 @@ import (
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/game"
+  "tezos-contests.izibi.com/backend/blockchain"
 
 )
 
@@ -38,6 +39,7 @@ type Config struct {
   FrontendOrigin string `yaml:"frontend_origin"`
   Auth auth.Config `yaml:"auth"`
   Game game.Config `yaml:"game"`
+  Blockchain blockchain.Store `yaml:"blockchain"`
 }
 
 func buildRootTemplate() *template.Template {
@@ -106,7 +108,7 @@ func setupRouter(config Config) *gin.Engine {
   }
 
   auth.SetupRoutes(backend, config.Auth, db)
-  game.SetupRoutes(backend, config.Game)
+  game.SetupRoutes(backend, config.Game, &config.Blockchain)
 
   backend.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
@@ -271,7 +273,7 @@ func main() {
   var config Config
   err = yaml.Unmarshal(configFile, &config)
   if err != nil { panic(err) }
-  if config.Game.BlockStorePath == "" {
+  if config.Blockchain.Path == "" {
     // TODO
   }
   if config.Auth.FrontendOrigin == "" {
