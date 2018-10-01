@@ -2,6 +2,8 @@
 package blocks
 
 import (
+  "fmt"
+  "bytes"
   "encoding/json"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/utils"
@@ -12,6 +14,20 @@ type Config struct {
 }
 
 func SetupRoutes(r gin.IRoutes, store *Store) {
+
+  r.GET("/Blocks/:hash/zip", func (c *gin.Context) {
+    fmt.Printf("A\n")
+    var err error
+    hash := c.Param("hash")
+    if !store.IsBlock(hash) {
+      c.String(404, "block not found")
+      return
+    }
+    buf := new(bytes.Buffer)
+    err = writeZip(store.blockDir(hash), buf)
+    if err != nil { c.String(500, "packing error: %s", err) }
+    c.Data(200, "application/zip", buf.Bytes())
+  })
 
   r.POST("/Blocks/:parentHash/Task", func (c *gin.Context) {
     resp := utils.NewResponse(c)

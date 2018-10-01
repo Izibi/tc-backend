@@ -2,7 +2,10 @@
 package blocks
 
 import (
+  "archive/zip"
+  "path/filepath"
   "io"
+  "io/ioutil"
   "os"
   "regexp"
   "crypto/sha1"
@@ -41,6 +44,25 @@ func createFile(filename string, data []byte, perm os.FileMode) error {
     err = err1
   }
   return err
+}
+
+func writeZip(dir string, w io.Writer) error {
+  zw := zip.NewWriter(w)
+  err := filepath.Walk(dir, func (path string, info os.FileInfo, err error) error {
+    if err != nil { return err }
+    if info.IsDir() { return nil }
+    f, err := zw.Create(info.Name())
+    if err != nil { return err }
+    bs, err := ioutil.ReadFile(path)
+    if err != nil { return err }
+    _, err = f.Write(bs)
+    if err != nil { return err }
+    return nil
+  })
+  if err != nil { return err }
+  err = zw.Close()
+  if err != nil { return err }
+  return nil
 }
 
 /*
