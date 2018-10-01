@@ -28,7 +28,7 @@ import (
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/teams"
   "tezos-contests.izibi.com/backend/contests"
-  "tezos-contests.izibi.com/backend/game"
+  "tezos-contests.izibi.com/backend/games"
   "tezos-contests.izibi.com/backend/blockchain"
 
 )
@@ -42,7 +42,7 @@ type Config struct {
   FrontendOrigin string `yaml:"frontend_origin"`
   ApiVersion string `yaml:"api_version"`
   Auth auth.Config `yaml:"auth"`
-  Game game.Config `yaml:"game"`
+  Game games.Config `yaml:"game"`
   Blockchain blockchain.Store `yaml:"blockchain"`
 }
 
@@ -114,7 +114,7 @@ func setupRouter(config Config) *gin.Engine {
   }
 
   auth.SetupRoutes(backend, config.Auth, db)
-  game.SetupRoutes(backend, config.Game, db)
+  games.SetupRoutes(backend, config.Game, db)
   teams.SetupRoutes(backend, db)
   contests.SetupRoutes(backend, db)
   blockchain.SetupRoutes(backend, &config.Blockchain)
