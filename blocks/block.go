@@ -110,6 +110,5 @@ func (store *Store) finalizeBlock(hash string, block Block, stdout io.Reader) er
 
 func (store *Store) deleteBlock(hash string) error {
   fmt.Printf("[store] delete %s\n", hash)
-  // return os.RemoveAll(store.blockDir(hash))
-  return nil
+  return os.RemoveAll(store.blockDir(hash))
 }
