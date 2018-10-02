@@ -74,6 +74,49 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     api.Result(j.Raw(cmds))
   })
 
+  r.POST("/Games/:gameKey/CloseRound", func (c *gin.Context) {
+    api := newApi(c)
+    var err error
+    var req struct {
+      Author string `json:"author"`
+      CurrentBlock string `json:"current_block"`
+    }
+    err = api.SignedRequest(&req)
+    if err != nil { api.Error(err); return }
+    gameKey := c.Param("gameKey")
+    m := model.New(c, db)
+    cmds, err := m.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
+    if err != nil { api.Error(err); return }
+    res := j.Object()
+    res.Prop("commands", j.Raw(cmds))
+    api.Result(res)
+  })
+
+  r.POST("/Games/:gameKey/CancelRound", func (c *gin.Context) {
+    api := newApi(c)
+    gameKey := c.Param("gameKey")
+    m := model.New(c, db)
+    err := m.CancelRound(gameKey)
+    if err != nil { api.Error(err); return }
+    api.Result(j.Null)
+  })
+
+  r.POST("/Games/:gameKey/Execute", func (c *gin.Context) {
+    api := newApi(c)
+    gameKey := c.Param("gameKey")
+    m := model.New(c, db)
+    game, err := m.LoadGame(gameKey, model.NullFacet)
+    if err != nil { api.Error(err); return }
+    hash, err := store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+    if err != nil { api.Error(err); return }
+    // build the command block [on remote server?]
+    // begin transaction
+    //   if success, commit "pending" commands, set new last_block, clear "pending" status of game
+    //   if failure, clear "pending" commands, clear "pending" status of game
+    // end transaction
+    api.Result(j.String(hash))
+  })
+
   r.GET("/Games/:gameKey/Events", func (c *gin.Context) {
     c.Header("Content-Type", "text/event-stream")
     c.Header("Cache-Control", "no-cache")
@@ -86,10 +129,6 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
       // registerGameSink(c.Param("gameKey"), w);
       return true
     })
-  })
-
-  r.POST("/Games/:gameKey/EndRound", func (c *gin.Context) {
-    // endGameRound(config, req.body)
   })
 
 }

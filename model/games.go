@@ -36,7 +36,17 @@ type GamePlayer struct {
   Team_player uint
   Created_at time.Time
   Updated_at time.Time
+  Locked_at *time.Time
   Commands []byte
+  Used string
+  Unused string
+}
+
+type PlayerInput struct {
+  Rank uint
+  Commands []json.RawMessage
+  Used []byte
+  Unused []byte
 }
 
 func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
@@ -77,6 +87,46 @@ func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock s
     }
   })
   return err
+}
+
+func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) ([]byte, error) {
+  teamId, err := m.FindTeamIdByKey(teamKey)
+  if err != nil { return nil, err }
+  var commands []byte
+  err = m.transaction(func () error {
+    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    if err != nil { return err }
+    if game.Last_block != currentBlock {
+      return errors.New("current block has changed")
+    }
+    if game.Owner_id != teamId {
+      return errors.New("only the game owner can end a round")
+    }
+    if game.Locked {
+      return errors.New("game is locked")
+    }
+    commands, err = m.getNextBlockCommands(game.Id, 2 /* game.Nb_cycles_per_round */)
+    if err != nil { return err }
+    err = m.lockGame(game.Id, commands)
+    if err != nil { return err }
+    return nil
+  })
+  if err !=  nil { return nil, err }
+  return commands, nil
+}
+
+func (m *Model) CancelRound(gameKey string) error {
+  return m.transaction(func () error {
+    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    if err != nil { return err }
+    _, err = m.db.Exec(
+      `UPDATE game_players SET locked_at = NULL WHERE game_id = ?`, game.Id)
+    if err != nil { return err }
+    _, err = m.db.Exec(
+      `UPDATE games SET locked = 0 WHERE id = ?`, game.Id)
+    if err != nil { return errors.Wrap(err, 0) }
+    return nil
+  })
 }
 
 /*
@@ -143,24 +193,85 @@ func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId string, f Facets) 
   return items, nil
 }
 
-func (m *Model) getGameCommands (gameId string) ([]GamePlayer, error) {
+func (m *Model) getNextBlockCommands (gameId string, count uint) ([]byte, error) {
   var err error
   rows, err := m.db.Queryx(
-    `SELECT * FROM game_players gp WHERE game_id = ? ORDER BY rank`, gameId)
+    `SELECT rank, commands FROM game_players gp WHERE game_id = ? ORDER BY rank`, gameId)
   if err != nil { return nil, errors.Wrap(err, 0) }
   defer rows.Close()
-  var items []GamePlayer
+  var commands = j.Array()
+  var cycles = make([]j.IArray, count, count)
+  var i uint
+  for i = 0; i < count; i++ {
+    cycleCmds := j.Array()
+    commands.Item(cycleCmds)
+    cycles[i] = cycleCmds
+  }
   for rows.Next() {
     item, err := m.loadGamePlayerRow(rows, NullFacet)
     if err != nil { return nil, err }
-    items = append(items, *item)
+    input, err := preparePlayerInput(item.Rank, item.Commands, count)
+    if err != nil { return nil, err }
+    _, err = m.db.Exec(
+      `UPDATE game_players SET used = ?, unused = ? WHERE game_id = ? AND rank = ?`,
+        input.Used, input.Unused, gameId, item.Rank)
+    if err != nil { return nil, errors.Wrap(err, 0) }
+    for i, cmd := range input.Commands {
+      obj := j.Object()
+      obj.Prop("player", j.Uint(item.Rank))
+      obj.Prop("command", j.String(ji.Get(cmd, "text").ToString()))
+      cycles[i].Item(obj)
+    }
   }
-  return items, nil
+  _, err = m.db.Exec(
+    `UPDATE game_players SET locked_at = NOW() WHERE game_id = ?`, gameId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  res, err := j.ToBytes(commands)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return res, nil
+}
+
+func preparePlayerInput(rank uint, commands []byte, count uint) (*PlayerInput, error) {
+  var cmds []json.RawMessage
+  err := json.Unmarshal([]byte(commands), &cmds)
+  if err != nil { return nil, err }
+  nbCommands := len(cmds)
+  firstUnused := int(count)
+  if firstUnused > nbCommands {
+    firstUnused = nbCommands
+  }
+  usedCommands := cmds[0:firstUnused]
+  used, err := json.Marshal(usedCommands)
+  if err != nil { return nil, err }
+  unused, err := json.Marshal(cmds[firstUnused:nbCommands])
+  if err != nil { return nil, err }
+  return &PlayerInput{
+    Rank: rank,
+    Commands: usedCommands,
+    Used: used,
+    Unused: unused,
+  }, nil
+}
+
+func (m *Model) lockGame (gameId string, commands []byte) error {
+  res, err := m.db.Exec(
+    `UPDATE games SET locked = 1, next_block_commands = ? WHERE id = ? AND locked = 0`,
+      commands, gameId)
+  if err != nil { return errors.Wrap(err, 0) }
+  if n, err := res.RowsAffected(); err != nil || n == 0 {
+    return errors.New("failed to lock game")
+  }
+  return nil
 }
 
 func (m *Model) LoadGame(key string, f Facets) (*Game, error) {
   return m.loadGameRow(m.db.QueryRowx(
     `SELECT * FROM games WHERE game_key = ?`, key), f)
+}
+
+func (m *Model) loadGameForUpdate(key string, f Facets) (*Game, error) {
+  return m.loadGameRow(m.db.QueryRowx(
+    `SELECT * FROM games WHERE game_key = ? FOR UPDATE`, key), f)
 }
 
 func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
