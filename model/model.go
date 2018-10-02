@@ -5,11 +5,13 @@ import (
   "database/sql"
   "sort"
   "github.com/jmoiron/sqlx"
+  "context"
   _ "github.com/go-sql-driver/mysql"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
 type Model struct {
+  ctx context.Context
   db *sqlx.DB
   result j.IObject
   entities map[string]j.Value
@@ -18,8 +20,9 @@ type Model struct {
   teams LoadSet
 }
 
-func New (db *sql.DB) *Model {
+func New (ctx context.Context, db *sql.DB) *Model {
   model := new(Model)
+  model.ctx = ctx
   model.db = sqlx.NewDb(db, "mysql")
   model.result = j.Object()
   model.entities = make(map[string]j.Value)

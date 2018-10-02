@@ -34,7 +34,7 @@ func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
 
   r.GET("/User", func (c *gin.Context) {
     resp := utils.NewResponse(c)
-    m := model.New(db)
+    m := model.New(c, db)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
@@ -95,7 +95,7 @@ func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
     if err != nil { c.AbortWithError(500, err); return }
 
     profile := LoadUserProfile(body)
-    m := model.New(db)
+    m := model.New(c, db)
     userId, err := m.ImportUserProfile(profile)
     if err != nil { c.AbortWithError(500, err); return }
 

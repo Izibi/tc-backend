@@ -26,7 +26,7 @@ func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) 
       resp.StringError("bad first block")
       return
     }
-    m := model.New(db)
+    m := model.New(c, db)
     gameKey, err := m.CreateGame(body.FirstBlock)
     if err != nil { resp.Error(err); return }
     game, err := m.ViewGame(gameKey)
@@ -37,7 +37,7 @@ func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
     resp := utils.NewResponse(c)
     gameKey := c.Param("gameKey")
-    m := model.New(db)
+    m := model.New(c, db)
     game, err := m.ViewGame(gameKey)
     if err != nil { resp.Error(err); return }
     resp.Send(game)

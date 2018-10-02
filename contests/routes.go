@@ -15,7 +15,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
-    m := model.New(db)
+    m := model.New(c, db)
     contestId := c.Param("contestId")
     err := m.ViewUserContest(userId, contestId)
     if err != nil { resp.Error(err); return }
@@ -26,7 +26,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     resp := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
-    m := model.New(db)
+    m := model.New(c, db)
     contestId := c.Param("contestId")
     err := m.ViewUserContestTeam(userId, contestId)
     if err != nil { resp.Error(err); return }
@@ -45,7 +45,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     var body Body
     err = c.ShouldBindJSON(&body)
     if err != nil { resp.Error(err); return }
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.CreateTeam(userId, contestId, body.TeamName)
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())
@@ -63,7 +63,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     var body Body
     err = c.ShouldBindJSON(&body)
     if err != nil { resp.Error(err); return }
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.JoinTeam(userId, contestId, body.AccessCode)
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())
@@ -74,7 +74,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     userId, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
     contestId := c.Param("contestId")
-    m := model.New(db)
+    m := model.New(c, db)
     err := m.ViewChains(userId, contestId, model.ChainFilters{})
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())

@@ -17,7 +17,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     userId, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
     teamId := c.Param("teamId")
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.LeaveTeam(teamId, userId)
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())
@@ -29,7 +29,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     userId, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
     teamId := c.Param("teamId")
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.RenewTeamAccessCode(teamId, userId)
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())
@@ -44,7 +44,7 @@ func SetupRoutes(r gin.IRoutes, db *sql.DB) {
     var arg model.UpdateTeamArg
     err = c.ShouldBindJSON(&arg)
     if err != nil { resp.Error(err); return }
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.UpdateTeam(teamId, userId, arg)
     if err != nil { resp.Error(err); return }
     resp.Send(m.Flat())

@@ -153,7 +153,7 @@ func setupRouter(config Config) *gin.Engine {
     resp := utils.NewResponse(c)
     id, ok := auth.GetUserId(c)
     if !ok { resp.BadUser(); return }
-    m := model.New(db)
+    m := model.New(c, db)
     err = m.ViewUser(id)
     if err != nil { resp.Error(err); return }
     err = m.ViewUserContests(id)
