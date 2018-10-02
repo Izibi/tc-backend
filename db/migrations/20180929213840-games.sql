@@ -6,6 +6,7 @@ CREATE TABLE games (
   game_key VARCHAR(43) NOT NULL DEFAULT "",
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  owner_id BIGINT NOT NULL,
   first_block VARCHAR(27) NOT NULL,
   last_block VARCHAR(27) NOT NULL,
   started_at DATETIME NULL DEFAULT NULL,
@@ -15,6 +16,10 @@ CREATE TABLE games (
 ) CHARACTER SET utf8 ENGINE=InnoDB;
 
 CREATE UNIQUE INDEX ix_games__game_key USING btree ON games (game_key);
+
+CREATE INDEX ix_games__owner_id USING btree ON games (owner_id);
+ALTER TABLE games ADD CONSTRAINT fk_games__owner_id
+    FOREIGN KEY ix_games__owner_id (owner_id) REFERENCES teams(id) ON DELETE CASCADE;
 
 -- +migrate Down
 

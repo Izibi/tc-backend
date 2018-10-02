@@ -17,6 +17,7 @@ type Game struct {
   Game_key string
   Created_at time.Time
   Updated_at time.Time
+  Owner_id string
   First_block string
   Last_block string
   Started_at mysql.NullTime
@@ -34,13 +35,13 @@ type GamePlayer struct {
   Commands string
 }
 
-func (m *Model) CreateGame(firstBlock string) (string, error) {
+func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
   var err error
   gameKey, err := generateKey()
   if err != nil { return "", errors.Wrap(err, 0) }
   _, err = m.db.Exec(
-    `INSERT INTO games (game_key, first_block, last_block, current_round)
-     VALUES (?, ?, ?, 0)`, gameKey, firstBlock, firstBlock)
+    `INSERT INTO games (game_key, owner_id, first_block, last_block, current_round)
+     VALUES (?, ?, ?, ?, 0)`, gameKey, ownerId, firstBlock, firstBlock)
   if err != nil { return "", errors.Wrap(err, 0) }
   return gameKey, nil
 }
@@ -199,6 +200,7 @@ func viewGame(game *Game) j.IObject {
   view.Prop("key", j.String(game.Game_key))
   timeProp(view, "createdAt", game.Created_at)
   timeProp(view, "updatedAt", game.Updated_at)
+  view.Prop("ownerId", j.String(game.Owner_id))
   view.Prop("firstBlock", j.String(game.First_block))
   view.Prop("lastBlock", j.String(game.Last_block))
   nullTimeProp(view, "startedAt", game.Started_at)

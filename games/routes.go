@@ -21,17 +21,24 @@ func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) 
   r.POST("/Games", func (c *gin.Context) {
     resp := utils.NewResponse(c)
     var err error
-    var body struct {
+    var req struct {
+      Author string `json:"author"`
       FirstBlock string `json:"first_block"`
     }
-    err = c.ShouldBindJSON(&body)
+    body, err := c.GetRawData()
     if err != nil { resp.Error(err); return }
-    if !store.IsBlock(body.FirstBlock) {
+    err = signing.Verify(config.ApiKey, body)
+    if err != nil { resp.Error(err); return }
+    err = c.ShouldBindJSON(&req)
+    if err != nil { resp.Error(err); return }
+    if !store.IsBlock(req.FirstBlock) {
       resp.StringError("bad first block")
       return
     }
     m := model.New(c, db)
-    gameKey, err := m.CreateGame(body.FirstBlock)
+    ownerId, err := m.FindTeamIdByKey(req.Author[1:])
+    if err != nil { resp.Error(err); return }
+    gameKey, err := m.CreateGame(ownerId, req.FirstBlock)
     if err != nil { resp.Error(err); return }
     game, err := m.ViewGame(gameKey)
     if err != nil { resp.Error(err); return }
