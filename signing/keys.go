@@ -17,14 +17,14 @@ type KeyPair struct {
   Private string `json:"private"`
 }
 
-func NewKeyPair () ([]byte, error) {
+func NewKeyPair () (*KeyPair, error) {
   pub, pri, err := ed25519.GenerateKey(rand.Reader)
   if err != nil { return nil, err }
-  res := j.Object()
-  res.Prop("curve", j.String("ed25519"))
-  res.Prop("public", j.String(wrapKey(pub)))
-  res.Prop("private", j.String(wrapKey(pri)))
-  return j.ToPrettyBytes(res)
+  return &KeyPair{
+    Curve: "ed25519",
+    Public: wrapKey(pub),
+    Private: wrapKey(pri),
+  }, nil
 }
 
 func wrapKey(key []byte) string {
@@ -45,7 +45,15 @@ func ReadKeyPair (r io.Reader) (*KeyPair, error) {
   return &res, nil
 }
 
-func (kp *KeyPair) WriteKeyPair (w io.Writer) error {
+func (kp *KeyPair) Encode() ([]byte, error) {
+  res := j.Object()
+  res.Prop("curve", j.String(kp.Curve))
+  res.Prop("public", j.String(kp.Public))
+  res.Prop("private", j.String(kp.Private))
+  return j.ToPrettyBytes(res)
+}
+
+func (kp *KeyPair) Write (w io.Writer) error {
   err := json.NewEncoder(w).Encode(kp)
   if err != nil { return err }
   return nil

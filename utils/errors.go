@@ -27,7 +27,7 @@ func (r *Response) Error(err error) {
 }
 
 func (r *Response) StringError(msg string) {
-  r.Error(errors.New(msg))
+  r.Error(errors.Wrap(msg, 1))
 }
 
 func (r *Response) BadUser() {

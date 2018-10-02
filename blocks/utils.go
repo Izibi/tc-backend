@@ -64,20 +64,3 @@ func writeZip(dir string, w io.Writer) error {
   if err != nil { return err }
   return nil
 }
-
-/*
-TODO:
-async function checkCommands (store, parentHash, input) {
-  const parentBlock = await readBlock(store, parentHash);
-  const protoHash = parentBlock.type === 'protocol' ? parentHash : parentBlock.protocol;
-  const protoPath = path.join(store.blockStorePath, protoHash);
-  const args = ["-t", store.taskPath, "-c", protoPath, "check_commands"];
-  input = input.replace(/[\r\n]+/g, "\n");
-  const outcome = await spawn(store.taskToolsBin, args, input);
-  if (outcome.exit_code !== 0 || outcome.stderr.length > 0) {
-    return {error: outcome.stderr};
-  }
-  return JSON.parse(outcome.stdout);
-}
-module.exports = {makeProtocolBlock, makeSetupBlock, makeCommandBlock, checkCommands};
-*/

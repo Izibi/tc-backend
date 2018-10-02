@@ -19,7 +19,7 @@ import (
 
 )
 
-func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
+func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) {
 
   oauthConf := &oauth2.Config{
       ClientID: config.ClientID,
@@ -33,16 +33,16 @@ func SetupRoutes(r gin.IRoutes, config Config, db *sql.DB) {
   }
 
   r.GET("/User", func (c *gin.Context) {
-    resp := utils.NewResponse(c)
+    api := newApi(c)
     m := model.New(c, db)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
       userId := val.(string)
       err := m.ViewUser(userId)
-      if err != nil { resp.Error(err); return }
+      if err != nil { api.Error(err); return }
     }
-    resp.Send(m.Flat())
+    api.Send(m.Flat())
   })
 
   r.GET("/Login", func (c *gin.Context) {

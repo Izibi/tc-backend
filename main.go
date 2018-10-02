@@ -20,10 +20,8 @@ import (
   "github.com/utrack/gin-csrf"
   _ "github.com/go-sql-driver/mysql"
   "github.com/Masterminds/semver"
-  //"golang.org/x/net/context"
   "gopkg.in/yaml.v2"
 
-  //j "tezos-contests.izibi.com/backend/jase"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
@@ -42,6 +40,7 @@ type Config struct {
   DataSource string `yaml:"data_source"`
   FrontendOrigin string `yaml:"frontend_origin"`
   ApiVersion string `yaml:"api_version"`
+  ApiKey string `yaml:"api_key"`
   Auth auth.Config `yaml:"auth"`
   Game games.Config `yaml:"game"`
   Blocks blocks.Store `yaml:"blocks"`
@@ -114,11 +113,15 @@ func setupRouter(config Config) *gin.Engine {
     backend = r.Group(mountPath)
   }
 
-  auth.SetupRoutes(backend, config.Auth, db)
-  teams.SetupRoutes(backend, db)
-  contests.SetupRoutes(backend, db)
-  blocks.SetupRoutes(backend, &config.Blocks)
-  games.SetupRoutes(backend, config.Game, &config.Blocks, db)
+  newApi := func (c *gin.Context) *utils.Response {
+    return utils.NewResponse(c, config.ApiKey)
+  }
+
+  auth.SetupRoutes(backend, newApi, config.Auth, db)
+  teams.SetupRoutes(backend, newApi, db)
+  contests.SetupRoutes(backend, newApi, db)
+  blocks.SetupRoutes(backend, newApi, &config.Blocks)
+  games.SetupRoutes(backend, newApi, config.Game, &config.Blocks, db)
 
   r.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")
@@ -138,10 +141,6 @@ func setupRouter(config Config) *gin.Engine {
     c.JSON(200, &res)
   })
 
-  r.POST("/Keypair", func (c *gin.Context) {
-    // ssbKeys.generate()
-  })
-
   backend.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
     token := csrf.GetToken(c)
@@ -151,15 +150,15 @@ func setupRouter(config Config) *gin.Engine {
 
   backend.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
     var err error
-    resp := utils.NewResponse(c)
+    api := newApi(c)
     id, ok := auth.GetUserId(c)
-    if !ok { resp.BadUser(); return }
+    if !ok { api.BadUser(); return }
     m := model.New(c, db)
     err = m.ViewUser(id)
-    if err != nil { resp.Error(err); return }
+    if err != nil { api.Error(err); return }
     err = m.ViewUserContests(id)
-    if err != nil { resp.Error(err); return }
-    resp.Send(m.Flat())
+    if err != nil { api.Error(err); return }
+    api.Send(m.Flat())
   })
 
 /*
@@ -204,6 +203,9 @@ func main() {
   }
   if config.Auth.FrontendOrigin == "" {
     config.Auth.FrontendOrigin = config.FrontendOrigin
+  }
+  if config.Game.ApiKey == "" {
+    config.Game.ApiKey = config.ApiKey
   }
 
   /*

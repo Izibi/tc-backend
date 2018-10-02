@@ -42,5 +42,8 @@ func extractSignature(msg []byte) (bare []byte, sig []byte) {
   if string(msg[l-15:]) != ".sig.ed25519\"\n}" { return msg, nil }
   out.Write(msg[:l-121])
   out.Write([]byte("\n}"))
-  return out.Bytes(), msg[l-103:l-15]
+  b64Sig := string(msg[l-103:l-15])
+  rawSig, err := base64.StdEncoding.DecodeString(b64Sig)
+  if err != nil { return msg, nil }
+  return out.Bytes(), rawSig
 }

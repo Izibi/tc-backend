@@ -16,7 +16,7 @@ func Sign(privKey string, apiKey string, message []byte) ([]byte, error) {
   if err != nil { return nil, errors.WrapPrefix(err, "bad message", 0) }
   pri, err := unwrapKey(privKey)
   if err != nil { return nil, errors.New("bad private key") }
-  rawApiKey, _ :=  base64.StdEncoding.DecodeString(apiKey)
+  rawApiKey, _ := base64.StdEncoding.DecodeString(apiKey)
   hash := hashMessage(rawApiKey, message)
   rawSig := ed25519.Sign(pri, hash)
   encSig := base64.StdEncoding.EncodeToString(rawSig) + ".sig.ed25519"

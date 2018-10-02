@@ -5,10 +5,12 @@ import (
   "crypto/rand"
   "database/sql"
   "encoding/base64"
+  "encoding/json"
   "fmt"
   "time"
   "github.com/go-sql-driver/mysql"
   "github.com/go-errors/errors"
+  ji "github.com/json-iterator/go"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -23,6 +25,8 @@ type Game struct {
   Started_at mysql.NullTime
   Round_ends_at mysql.NullTime
   Current_round uint
+  Locked bool
+  Next_block_commands []byte
 }
 
 type GamePlayer struct {
@@ -32,7 +36,7 @@ type GamePlayer struct {
   Team_player uint
   Created_at time.Time
   Updated_at time.Time
-  Commands string
+  Commands []byte
 }
 
 func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
@@ -47,7 +51,7 @@ func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
 }
 
 func (m *Model) ViewGame(gameKey string) (j.Value, error) {
-  game, err := m.loadGame(gameKey, NullFacet)
+  game, err := m.LoadGame(gameKey, NullFacet)
   if err != nil { return j.Null, err }
   if game == nil {
     return j.Null, nil
@@ -55,30 +59,27 @@ func (m *Model) ViewGame(gameKey string) (j.Value, error) {
   return viewGame(game), nil
 }
 
-func (m *Model) SetPlayerCommands (gameKey string, teamKey string, teamPlayer uint, commands string) error {
-  var err error
-  gameId, err := m.getGameId(gameKey)
-  if err != nil { return err }
+func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock string, teamPlayer uint, commands []byte) (err error) {
   teamId, err := m.FindTeamIdByKey(teamKey)
-  if err != nil { return err }
-  tx, err := m.db.BeginTx(m.ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-  if err != nil { return errors.Wrap(err, 0) }
-  rank, err := m.getPlayerRank(gameId, teamId, teamPlayer)
-  if rank == 0 {
-    err = m.addPlayerToGame(gameId, teamId, teamPlayer, commands)
-  } else {
-    err = m.setPlayerCommands(gameId, rank, commands)
-  }
-  if err != nil {
-    _ = tx.Rollback()
-    return errors.Wrap(err, 0)
-  }
-  if err := tx.Commit(); err != nil {
-    return errors.Wrap(err, 0)
-  }
-  return nil
+  if err != nil { return }
+  err = m.transaction(func () error {
+    game, err := m.LoadGame(gameKey, NullFacet)
+    if err != nil { return err }
+    if game.Last_block != currentBlock {
+      return errors.New("current block has changed")
+    }
+    rank, err := m.getPlayerRank(game.Id, teamId, teamPlayer)
+    if err != nil { return err }
+    if rank == 0 {
+      return m.addPlayerToGame(game.Id, teamId, teamPlayer, commands)
+    } else {
+      return m.setPlayerCommands(game.Id, rank, commands)
+    }
+  })
+  return err
 }
 
+/*
 func (m *Model) getGameId(gameKey string) (string, error) {
   row := m.db.QueryRow(`SELECT id FROM games WHERE game_key = ?`, gameKey)
   var id string
@@ -86,6 +87,7 @@ func (m *Model) getGameId(gameKey string) (string, error) {
   if err != nil { return "", err }
   return id, nil
 }
+*/
 
 func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (uint, error) {
   row := m.db.QueryRow(
@@ -99,19 +101,19 @@ func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (ui
   return rank, nil
 }
 
-func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, commands string) error {
+func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands)
-      SELECT game_id, 1 + COUNT(rank), ?, ?, ?
+      SELECT ?, 1 + COUNT(rank), ?, ?, ?
       FROM game_players
       WHERE game_id = ?`,
-    teamId, teamPlayer, commands, gameId)
+    gameId, teamId, teamPlayer, commands, gameId)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
-func (m *Model) setPlayerCommands (gameId string, rank uint, commands string) error {
+func (m *Model) setPlayerCommands (gameId string, rank uint, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `UPDATE game_players
@@ -122,7 +124,7 @@ func (m *Model) setPlayerCommands (gameId string, rank uint, commands string) er
   return nil
 }
 
-func (m *Model) loadGamePlayers (gameKey string, teamId string, f Facets) ([]GamePlayer, error) {
+func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId string, f Facets) ([]GamePlayer, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT gp.* FROM game_players gp
@@ -156,7 +158,7 @@ func (m *Model) getGameCommands (gameId string) ([]GamePlayer, error) {
   return items, nil
 }
 
-func (m *Model) loadGame(key string, f Facets) (*Game, error) {
+func (m *Model) LoadGame(key string, f Facets) (*Game, error) {
   return m.loadGameRow(m.db.QueryRowx(
     `SELECT * FROM games WHERE game_key = ?`, key), f)
 }
@@ -183,7 +185,7 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
     view.Prop("teamPlayer", j.Uint(res.Team_player))
     timeProp(view, "createdAt", res.Created_at)
     timeProp(view, "updatedAt", res.Updated_at)
-    view.Prop("commands", j.String(res.Commands))
+    view.Prop("commands", j.Raw(res.Commands))
   }
   return &res, nil
 }

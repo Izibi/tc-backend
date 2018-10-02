@@ -2,6 +2,8 @@
 package blocks
 
 import (
+  "encoding/json"
+  "strings"
   "path/filepath"
   "io/ioutil"
   "os"
@@ -11,24 +13,21 @@ import (
 
 type CommandBlock struct {
   BlockBase
-  Nb_cycles uint `json:"nb_cycles"`
-  Commands string
+  Commands string `json:"commands"`
 }
 
 func (b *CommandBlock) Marshal() j.IObject {
   res := b.marshalBase()
-  res.Prop("nb_cycles", j.Uint(b.Nb_cycles))
   res.Prop("commands", j.String(b.Commands))
   return res
 }
 
-func (store *Store) MakeCommandBlock(parentHash string, nbCycles uint, commands []byte) (hash string, err error) {
+func (store *Store) MakeCommandBlock(parentHash string, commands []byte) (hash string, err error) {
 
   commands, err = j.PrettyBytes(commands)
   if err != nil { return }
 
   block := CommandBlock{
-    Nb_cycles: nbCycles,
     Commands: hashResource(commands),
   }
   err = store.chainBlock(&block.BlockBase, "command", parentHash)
@@ -80,4 +79,38 @@ func (store *Store) MakeCommandBlock(parentHash string, nbCycles uint, commands 
   if err != nil { return }
 
   return
+}
+
+func (store *Store) CheckCommands(block *BlockBase, commands string) (result []byte, err error) {
+
+  // commands = commands.replace(/[\r\n]+/g, "\n");
+
+  if block.Protocol == "" {
+    err = errors.New("block has protocol")
+    return
+  }
+
+  cmd := newCommand(
+    store.taskToolsPath(block.Task),
+    "-t", store.blockDir(block.Task),
+    "-p", store.blockDir(block.Protocol),
+    "check_commands")
+  err = cmd.Run(strings.NewReader(commands))
+  if err != nil {
+    err = errors.WrapPrefix(err, "error checking commands", 0)
+    return
+  }
+
+  var res struct {
+    Commands json.RawMessage `json:"commands"`
+    Error string `json:"error"`
+    Details string `json:"details"`
+  }
+  json.Unmarshal(cmd.Stdout.Bytes(), &res)
+  if res.Error != "" {
+    err = errors.Errorf("%s\n%s", res.Error, res.Details)
+    return
+  }
+
+  return res.Commands, nil
 }

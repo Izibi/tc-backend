@@ -3,12 +3,12 @@ package games
 
 import (
   "io"
+  "fmt"
   "database/sql"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/blocks"
-  "tezos-contests.izibi.com/backend/signing"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -16,63 +16,62 @@ type Config struct {
   ApiKey string
 }
 
-func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) {
+func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *blocks.Store, db *sql.DB) {
 
   r.POST("/Games", func (c *gin.Context) {
-    resp := utils.NewResponse(c)
+    api := newApi(c)
     var err error
     var req struct {
       Author string `json:"author"`
       FirstBlock string `json:"first_block"`
     }
-    body, err := c.GetRawData()
-    if err != nil { resp.Error(err); return }
-    err = signing.Verify(config.ApiKey, body)
-    if err != nil { resp.Error(err); return }
-    err = c.ShouldBindJSON(&req)
-    if err != nil { resp.Error(err); return }
+    err = api.SignedRequest(&req)
+    if err != nil { api.Error(err); return }
+    fmt.Printf("new game request %v\n", req)
     if !store.IsBlock(req.FirstBlock) {
-      resp.StringError("bad first block")
+      api.StringError("bad first block")
       return
     }
     m := model.New(c, db)
     ownerId, err := m.FindTeamIdByKey(req.Author[1:])
-    if err != nil { resp.Error(err); return }
+    if err != nil { api.Error(err); return }
     gameKey, err := m.CreateGame(ownerId, req.FirstBlock)
-    if err != nil { resp.Error(err); return }
+    if err != nil { api.Error(err); return }
     game, err := m.ViewGame(gameKey)
-    if err != nil { resp.Error(err); return }
-    resp.Send(game)
+    if err != nil { api.Error(err); return }
+    api.Result(game)
   })
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
-    resp := utils.NewResponse(c)
+    api := newApi(c)
     gameKey := c.Param("gameKey")
     m := model.New(c, db)
     game, err := m.ViewGame(gameKey)
-    if err != nil { resp.Error(err); return }
-    resp.Send(game)
+    if err != nil { api.Error(err); return }
+    api.Result(game)
   })
 
   r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
-    resp := utils.NewResponse(c)
+    api := newApi(c)
     var err error
-    body, err := c.GetRawData()
-    if err != nil { resp.Error(err); return }
-    err = signing.Verify(config.ApiKey, body)
-    if err != nil { resp.Error(err); return }
     var req struct {
       Author string `json:"author"`
+      CurrentBlock string `json:"current_block"`
       Player uint `json:"player"`
       Commands string `json:"commands"`
     }
-    err = c.ShouldBindJSON(&req)
-    if err != nil { resp.Error(err); return }
+    err = api.SignedRequest(&req)
+    if err != nil { api.Error(err); return }
+    block, err := store.ReadBlock(req.CurrentBlock)
+    if err != nil { api.Error(err); return }
+    cmds, err := store.CheckCommands(block.Base(), req.Commands)
+    if err != nil { api.Error(err); return }
     gameKey := c.Param("gameKey")
     m := model.New(c, db)
-    err = m.SetPlayerCommands(gameKey, req.Author[1:], req.Player, req.Commands)
-    if err != nil { resp.Error(err); return }
-    resp.Send(j.Null)
+    /* XXX pass raw commands to SetPlayerCommands */
+    err = m.SetPlayerCommands(gameKey, req.Author[1:], req.CurrentBlock, req.Player, cmds)
+    if err != nil { api.Error(err); return }
+    api.Result(j.Raw(cmds))
   })
 
   r.GET("/Games/:gameKey/Events", func (c *gin.Context) {

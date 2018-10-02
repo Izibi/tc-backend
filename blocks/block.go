@@ -20,10 +20,10 @@ func (store *Store) IsBlock(hash string) bool {
   if !validateHash(hash) { return false }
   blockDir := store.blockDir(hash)
   fi, err := os.Stat(blockDir)
-  return err != nil && fi.IsDir()
+  return err == nil && fi.IsDir()
 }
 
-func (store *Store) readBlock(hash string) (block Block, err error) {
+func (store *Store) ReadBlock(hash string) (block Block, err error) {
   if !validateHash(hash) { return nil, errors.New("invalid hash") }
   blockPath := filepath.Join(store.blockDir(hash), "block.json")
   blockBytes, err := ioutil.ReadFile(blockPath)
@@ -51,7 +51,7 @@ func (store *Store) readBlock(hash string) (block Block, err error) {
 
 func (store *Store) chainBlock(dst *BlockBase, kind string, parentHash string) error {
   /* Load the parent block. */
-  parentBlock, err := store.readBlock(parentHash)
+  parentBlock, err := store.ReadBlock(parentHash)
   if err != nil { return err }
   parentBase := parentBlock.Base()
   *dst = *parentBase
