@@ -207,6 +207,14 @@ func (m *Model) RenewTeamAccessCode(teamId string, userId string) error {
   return err
 }
 
+func (m *Model) FindTeamIdByKey(publicKey string) (string, error) {
+  row := m.db.QueryRow(`SELECT id FROM teams WHERE public_key = ?`, publicKey)
+  var id string
+  err := row.Scan(&id)
+  if err != nil { return "", err }
+  return id, nil
+}
+
 func (m *Model) isUserNotInAnyTeam(userId string, contestId string) (bool, error) {
   var teamCount int
   err := m.db.QueryRowx(

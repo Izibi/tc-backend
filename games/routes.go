@@ -8,9 +8,13 @@ import (
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/blocks"
+  "tezos-contests.izibi.com/backend/signing"
+  j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Config struct {}
+type Config struct {
+  ApiKey string
+}
 
 func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) {
 
@@ -43,6 +47,27 @@ func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) 
     resp.Send(game)
   })
 
+  r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
+    resp := utils.NewResponse(c)
+    var err error
+    body, err := c.GetRawData()
+    if err != nil { resp.Error(err); return }
+    err = signing.Verify(config.ApiKey, body)
+    if err != nil { resp.Error(err); return }
+    var req struct {
+      Author string `json:"author"`
+      Player uint `json:"player"`
+      Commands string `json:"commands"`
+    }
+    err = c.ShouldBindJSON(&req)
+    if err != nil { resp.Error(err); return }
+    gameKey := c.Param("gameKey")
+    m := model.New(c, db)
+    err = m.SetPlayerCommands(gameKey, req.Author[1:], req.Player, req.Commands)
+    if err != nil { resp.Error(err); return }
+    resp.Send(j.Null)
+  })
+
   r.GET("/Games/:gameKey/Events", func (c *gin.Context) {
     c.Header("Content-Type", "text/event-stream")
     c.Header("Cache-Control", "no-cache")
@@ -55,10 +80,6 @@ func SetupRoutes(r gin.IRoutes, config Config, store *blocks.Store, db *sql.DB) 
       // registerGameSink(c.Param("gameKey"), w);
       return true
     })
-  })
-
-  r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
-    // inputCommands(config, req.body)
   })
 
   r.POST("/Games/:gameKey/EndRound", func (c *gin.Context) {

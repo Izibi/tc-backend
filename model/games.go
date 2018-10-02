@@ -21,14 +21,14 @@ type Game struct {
   Last_block string
   Started_at mysql.NullTime
   Round_ends_at mysql.NullTime
-  Current_round int
+  Current_round uint
 }
 
 type GamePlayer struct {
   Game_id string
-  Rank int
+  Rank uint
   Team_id string
-  Team_player int
+  Team_player uint
   Created_at time.Time
   Updated_at time.Time
   Commands string
@@ -54,29 +54,69 @@ func (m *Model) ViewGame(gameKey string) (j.Value, error) {
   return viewGame(game), nil
 }
 
-func (m *Model) addPlayerToGame (gameKey string, teamId string, teamPlayer int, commands string) error {
+func (m *Model) SetPlayerCommands (gameKey string, teamKey string, teamPlayer uint, commands string) error {
+  var err error
+  gameId, err := m.getGameId(gameKey)
+  if err != nil { return err }
+  teamId, err := m.FindTeamIdByKey(teamKey)
+  if err != nil { return err }
+  tx, err := m.db.BeginTx(m.ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+  if err != nil { return errors.Wrap(err, 0) }
+  rank, err := m.getPlayerRank(gameId, teamId, teamPlayer)
+  if rank == 0 {
+    err = m.addPlayerToGame(gameId, teamId, teamPlayer, commands)
+  } else {
+    err = m.setPlayerCommands(gameId, rank, commands)
+  }
+  if err != nil {
+    _ = tx.Rollback()
+    return errors.Wrap(err, 0)
+  }
+  if err := tx.Commit(); err != nil {
+    return errors.Wrap(err, 0)
+  }
+  return nil
+}
+
+func (m *Model) getGameId(gameKey string) (string, error) {
+  row := m.db.QueryRow(`SELECT id FROM games WHERE game_key = ?`, gameKey)
+  var id string
+  err := row.Scan(&id)
+  if err != nil { return "", err }
+  return id, nil
+}
+
+func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (uint, error) {
+  row := m.db.QueryRow(
+    `SELECT rank FROM game_players
+      WHERE game_id = ? AND team_id = ? AND team_player = ? LIMIT 1`,
+      gameId, teamId, teamPlayer)
+  var rank uint
+  err := row.Scan(&rank)
+  if err == sql.ErrNoRows { return 0, nil }
+  if err != nil { return 0, err }
+  return rank, nil
+}
+
+func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, commands string) error {
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands)
-      SELECT g.id, 1 + COUNT(gp.rank), ?, ?, ?
-      FROM games g, game_players gp
-      WHERE g.game_key = ?
-      AND gp.game_id = g.id`,
-    teamId, teamPlayer, commands, gameKey)
+      SELECT game_id, 1 + COUNT(rank), ?, ?, ?
+      FROM game_players
+      WHERE game_id = ?`,
+    teamId, teamPlayer, commands, gameId)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
-func (m *Model) setPlayerCommands (gameKey string, teamId string, teamPlayer int, commands string) error {
+func (m *Model) setPlayerCommands (gameId string, rank uint, commands string) error {
   var err error
   _, err = m.db.Exec(
-    `UPDATE game_players gp
-      INNER JOIN games g ON gp.game_id = g.id
+    `UPDATE game_players
       SET commands = ?
-      WHERE g.game_key = ?
-      AND gp.team_id = ?
-      AND gp.team_player = ?`,
-    commands, gameKey, teamId, teamPlayer)
+      WHERE game_id = ? AND rank = ?`,
+    commands, gameId, rank)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
@@ -138,8 +178,8 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
     view := j.Object()
-    view.Prop("rank", j.Int(res.Rank))
-    view.Prop("teamPlayer", j.Int(res.Team_player))
+    view.Prop("rank", j.Uint(res.Rank))
+    view.Prop("teamPlayer", j.Uint(res.Team_player))
     timeProp(view, "createdAt", res.Created_at)
     timeProp(view, "updatedAt", res.Updated_at)
     view.Prop("commands", j.String(res.Commands))
@@ -163,6 +203,6 @@ func viewGame(game *Game) j.IObject {
   view.Prop("lastBlock", j.String(game.Last_block))
   nullTimeProp(view, "startedAt", game.Started_at)
   nullTimeProp(view, "roundEndsAt", game.Round_ends_at)
-  view.Prop("currentRound", j.Int(game.Current_round))
+  view.Prop("currentRound", j.Uint(game.Current_round))
   return view
 }
