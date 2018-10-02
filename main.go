@@ -12,6 +12,7 @@ import (
   "net/http"
   "time"
 
+  "github.com/fatih/color"
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
   "github.com/gin-contrib/sessions/cookie"
@@ -188,6 +189,8 @@ func setupRouter(config Config) *gin.Engine {
 }
 
 func main() {
+
+  color.NoColor = false
 
   var err error
   var configFile []byte
