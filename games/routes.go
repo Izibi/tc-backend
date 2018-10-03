@@ -2,13 +2,13 @@
 package games
 
 import (
-  "io"
   "fmt"
   "database/sql"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/blocks"
+  "tezos-contests.izibi.com/backend/events"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -16,7 +16,7 @@ type Config struct {
   ApiKey string
 }
 
-func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *blocks.Store, db *sql.DB) {
+func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *blocks.Store, db *sql.DB, es *events.Service) {
 
   r.POST("/Games", func (c *gin.Context) {
     api := newApi(c)
@@ -107,28 +107,32 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     m := model.New(c, db)
     game, err := m.LoadGame(gameKey, model.NullFacet)
     if err != nil { api.Error(err); return }
+    // TODO: make the block on a remote server
     hash, err := store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
     if err != nil { api.Error(err); return }
-    // build the command block [on remote server?]
     // begin transaction
     //   if success, commit "pending" commands, set new last_block, clear "pending" status of game
     //   if failure, clear "pending" commands, clear "pending" status of game
     // end transaction
+    es.Publish(gameChannel(gameKey), newBlockMessage(hash))
     api.Result(j.String(hash))
   })
 
-  r.GET("/Games/:gameKey/Events", func (c *gin.Context) {
-    c.Header("Content-Type", "text/event-stream")
-    c.Header("Cache-Control", "no-cache")
-    c.Header("Connection", "keep-alive")
-    c.Header("X-Accel-Buffering", "no")
-    c.Stream(func (w io.Writer) bool {
-      w.Write([]byte("retry: 30000\n\n"))
-      // TODO: verify the game actually exists
-      // TODO: this is wrong, teams should register for events (with a signed message)
-      // registerGameSink(c.Param("gameKey"), w);
-      return true
-    })
+  r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
+    err := es.Publish(c.Param("gameKey"), "ping")
+    if err != nil {
+      c.JSON(500, gin.H{"error": err.Error()})
+      return
+    }
+    c.JSON(200, gin.H{"result": true})
   })
 
+}
+
+func gameChannel(gameKey string) string {
+  return fmt.Sprintf("games/%s", gameKey)
+}
+
+func newBlockMessage(hash string) string {
+  return fmt.Sprintf("block:%s", hash)
 }
