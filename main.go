@@ -6,7 +6,6 @@ import (
   "database/sql"
   "fmt"
   "html/template"
-  //"io"
   "io/ioutil"
   "log"
   "net/http"
@@ -105,23 +104,23 @@ func setupRouter(config Config) *gin.Engine {
     c.String(http.StatusOK, "pong")
   })
 
-  var backend gin.IRoutes
+  var router gin.IRoutes
   mountPath := config.MountPath
   if mountPath == "" {
-    backend = r
+    router = r
   } else {
-    backend = r.Group(mountPath)
+    router = r.Group(mountPath)
   }
 
   newApi := func (c *gin.Context) *utils.Response {
     return utils.NewResponse(c, config.ApiKey)
   }
 
-  auth.SetupRoutes(backend, newApi, config.Auth, db)
-  teams.SetupRoutes(backend, newApi, db)
-  contests.SetupRoutes(backend, newApi, db)
-  blocks.SetupRoutes(backend, newApi, &config.Blocks)
-  games.SetupRoutes(backend, newApi, config.Game, &config.Blocks, db)
+  auth.SetupRoutes(router, newApi, config.Auth, db)
+  teams.SetupRoutes(router, newApi, db)
+  contests.SetupRoutes(router, newApi, db)
+  blocks.SetupRoutes(router, newApi, &config.Blocks)
+  games.SetupRoutes(router, newApi, config.Game, &config.Blocks, db, eventService)
 
   r.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")
@@ -141,14 +140,14 @@ func setupRouter(config Config) *gin.Engine {
     c.JSON(200, &res)
   })
 
-  backend.GET("/CsrfToken.js", func(c *gin.Context) {
+  router.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
     token := csrf.GetToken(c)
     c.Data(200, "application/javascript",
       []byte(fmt.Sprintf(";window.csrfToken = \"%s\";", token)))
   });
 
-  backend.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
+  router.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
     var err error
     api := newApi(c)
     id, ok := auth.GetUserId(c)
