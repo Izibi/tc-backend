@@ -55,6 +55,12 @@ func (r *Response) logRequestBody(bs []byte) {
   fmt.Printf("%s\n", string(bs))
 }
 
+func (r *Response) Request(req interface{}) error {
+  body, err := r.context.GetRawData()
+  if err != nil { return err }
+  return json.Unmarshal(body, req)
+}
+
 func (r *Response) SignedRequest(req interface{}) error {
   // TODO: check r.context.ContentType() is "application/json"
   body, err := r.context.GetRawData()

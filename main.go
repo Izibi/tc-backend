@@ -28,6 +28,7 @@ import (
   "tezos-contests.izibi.com/backend/contests"
   "tezos-contests.izibi.com/backend/games"
   "tezos-contests.izibi.com/backend/blocks"
+  "tezos-contests.izibi.com/backend/events"
 
 )
 
@@ -63,6 +64,11 @@ func setupRouter(config Config) *gin.Engine {
   db, err = sql.Open("mysql", config.DataSource)
   if err != nil {
     log.Panicf("Failed to connect to database: %s\n", err)
+  }
+
+  eventService, err := events.NewService()
+  if err != nil {
+    log.Panicf("Failed to connect to create event service: %s\n", err)
   }
 
   // Disable Console Color
@@ -121,6 +127,7 @@ func setupRouter(config Config) *gin.Engine {
   contests.SetupRoutes(router, newApi, db)
   blocks.SetupRoutes(router, newApi, &config.Blocks)
   games.SetupRoutes(router, newApi, config.Game, &config.Blocks, db, eventService)
+  eventService.SetupRoutes(router, newApi)
 
   r.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")
