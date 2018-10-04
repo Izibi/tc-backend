@@ -6,9 +6,11 @@ import (
   crand "crypto/rand"
   "encoding/binary"
   "encoding/base64"
+  "fmt"
   "errors"
   "io"
   "math/rand"
+  "strings"
   "sync"
   "github.com/gin-gonic/gin"
   "github.com/go-redis/redis"
@@ -65,11 +67,11 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
         var ps *redis.PubSub
         key, ps, err = svc.newClient()
         if err != nil {
-          c.SSEvent("error", err.Error())
+          writeEvent(w, &SSEvent{Event: "error", Data: err.Error()})
           return false
         }
         source = ps.Channel()
-        c.SSEvent("key", key)
+        writeEvent(w, &SSEvent{Event: "key", Data: key})
         return true
       }
       select {
@@ -81,7 +83,7 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
             svc.removeClient(key)
             return false
           }
-          c.SSEvent(msg.Channel, msg.Payload)
+          writeEvent(w, &SSEvent{Event: msg.Channel, Data: msg.Payload})
           return true
       }
     })
@@ -168,4 +170,32 @@ func seededRng() (*rand.Rand, error) {
   err = binary.Read(bytes.NewBuffer(bs), binary.LittleEndian, &seed)
   if err != nil { return nil, err }
   return rand.New(rand.NewSource(seed)), nil
+}
+
+type SSEvent struct {
+  Id string
+  Event string
+  Data string
+}
+
+func writeEvent(w io.Writer, m *SSEvent) {
+  var buf bytes.Buffer
+  if len(m.Id) > 0 {
+    buf.WriteString(fmt.Sprintf("id: %s\n", noLF(m.Id)))
+  }
+  if len(m.Event) > 0 {
+    buf.WriteString(fmt.Sprintf("event: %s\n", noLF(m.Event)))
+  }
+  if len(m.Data) > 0 {
+    lines := strings.Split(m.Data, "\n")
+    for _, line := range lines {
+      buf.WriteString(fmt.Sprintf("data: %s\n", line))
+    }
+  }
+  buf.WriteString("\n")
+  w.Write(buf.Bytes())
+}
+
+func noLF(s string) string {
+  return strings.Replace(s, "\n", "", -1)
 }
