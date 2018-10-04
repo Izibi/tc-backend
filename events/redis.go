@@ -141,20 +141,24 @@ func (svc *Service) getClient(key string) (*redis.PubSub, error) {
   return ps, nil
 }
 
-func (svc *Service) removeClient(key string) error {
-  ps, ok := svc.clients[key]
-  if !ok { return errors.New("removeClient of unknown key") }
+func (svc *Service) removeClient(key string) {
   if verbose {
     hi2.Printf("- %s\n", key)
   }
-  err := ps.Close()
-  if err != nil { return nil }
+  var ps *redis.PubSub
   {
     svc.mutex.Lock()
-    delete(svc.clients, key)
+    var ok bool
+    ps, ok = svc.clients[key]
+    if ok {
+      delete(svc.clients, key)
+    }
     svc.mutex.Unlock()
   }
-  return nil
+  if ps != nil {
+    _ = ps.Close()
+    _ = svc.client.Del(key).Err()
+  }
 }
 
 func (svc *Service) Publish(channel string, message string) error {
