@@ -7,7 +7,6 @@ import (
   "encoding/binary"
   "encoding/base64"
   "fmt"
-  "errors"
   "io"
   "math/rand"
   "strings"
@@ -65,7 +64,7 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
       var err error
       if source == nil {
         var ps *redis.PubSub
-        key, ps, err = svc.newClient()
+        key, ps, err = svc.newClient(c.Request.Host)
         if err != nil {
           writeEvent(w, &SSEvent{Event: "error", Data: err.Error()})
           return false
@@ -98,8 +97,24 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
     err = api.Request(&req)
     if err != nil { api.Error(err); return }
     var ps *redis.PubSub
-    ps, err = svc.getClient(c.Param("key"))
-    if err != nil { api.Error(err); return }
+    var host string
+    key := c.Param("key")
+    ps, host = svc.getClient(key)
+    if ps == nil {
+      if len(host) > 0 {
+        if host == c.Request.Host {
+          svc.client.Del(key)
+          api.StringError("no such client 1")
+          return
+        }
+        /* TODO: proxy request to host */
+        hi1.Printf("forward request to %s\n", host)
+        api.StringError("event request forwarding is not implemented")
+        return
+      }
+      api.StringError("no such client 2")
+      return
+    }
     if len(req.Unsubscribe) > 0 {
       err = ps.Unsubscribe(req.Unsubscribe...)
       if err != nil { api.Error(err); return }
@@ -112,12 +127,14 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
   })
 }
 
-func (svc *Service) newClient() (string, *redis.PubSub, error) {
+func (svc *Service) newClient(host string) (string, *redis.PubSub, error) {
   keyBytes := make([]byte, 32, 32)
   _, err := svc.rng.Read(keyBytes)
   if err != nil { return "", nil, err }
   key := base64.RawURLEncoding.EncodeToString(keyBytes[:])
   ps := svc.client.Subscribe("system")
+  err = svc.client.Set(key, host, 0).Err()
+  if err != nil { return "", nil, err }
   {
     svc.mutex.Lock()
     svc.clients[key] = ps
@@ -129,7 +146,7 @@ func (svc *Service) newClient() (string, *redis.PubSub, error) {
   return key, ps, nil
 }
 
-func (svc *Service) getClient(key string) (*redis.PubSub, error) {
+func (svc *Service) getClient(key string) (*redis.PubSub, string) {
   var ps *redis.PubSub
   var ok bool
   {
@@ -137,8 +154,12 @@ func (svc *Service) getClient(key string) (*redis.PubSub, error) {
     ps, ok = svc.clients[key]
     svc.mutex.RUnlock()
   }
-  if !ok { return nil, errors.New("no such client") }
-  return ps, nil
+  if !ok {
+    host, err := svc.client.Get(key).Result()
+    if err != nil { return nil, "" }
+    return nil, host
+  }
+  return ps, ""
 }
 
 func (svc *Service) removeClient(key string) {
