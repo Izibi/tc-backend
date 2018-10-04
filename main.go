@@ -105,11 +105,6 @@ func setupRouter(config Config) *gin.Engine {
     MaxAge: 12 * time.Hour,
   }))
 
-  // Ping test
-  r.GET("/ping", func(c *gin.Context) {
-    c.String(http.StatusOK, "pong")
-  })
-
   var router gin.IRoutes
   mountPath := config.MountPath
   if mountPath == "" {
@@ -129,7 +124,11 @@ func setupRouter(config Config) *gin.Engine {
   games.SetupRoutes(router, newApi, config.Game, &config.Blocks, db, eventService)
   eventService.SetupRoutes(router, newApi)
 
-  r.GET("/Time", func (c *gin.Context) {
+  router.GET("/ping", func(c *gin.Context) {
+    c.String(http.StatusOK, "pong")
+  })
+
+  router.GET("/Time", func (c *gin.Context) {
     reqVersion := c.GetHeader("X-Api-Version")
     req, err := semver.NewConstraint(reqVersion)
     if err != nil {
