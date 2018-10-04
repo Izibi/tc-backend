@@ -38,8 +38,8 @@ type GamePlayer struct {
   Updated_at time.Time
   Locked_at *time.Time
   Commands []byte
-  Used string
-  Unused string
+  Used []byte
+  Unused []byte
 }
 
 type PlayerInput struct {
@@ -124,6 +124,29 @@ func (m *Model) CancelRound(gameKey string) error {
     if err != nil { return err }
     _, err = m.db.Exec(
       `UPDATE games SET locked = 0 WHERE id = ?`, game.Id)
+    if err != nil { return errors.Wrap(err, 0) }
+    return nil
+  })
+}
+
+func (m *Model) EndRoundAndUnlock(gameKey string, newBlock string) error {
+  return m.transaction(func () error {
+    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    if err != nil { return err }
+    if !game.Locked { return errors.New("game is not locked") }
+    _, err = m.db.Exec(
+      `UPDATE game_players SET
+        locked_at = NULL,
+        commands = IF(updated_at > locked_at, commands, unused)
+       WHERE game_id = ?`, game.Id)
+    if err != nil { return err }
+    _, err = m.db.Exec(
+      `UPDATE games SET
+        locked = 0,
+        current_round = current_round + 1,
+        last_block = ?,
+        next_block_commands = ""
+       WHERE id = ?`, newBlock, game.Id)
     if err != nil { return errors.Wrap(err, 0) }
     return nil
   })
@@ -319,5 +342,6 @@ func viewGame(game *Game) j.IObject {
   nullTimeProp(view, "startedAt", game.Started_at)
   nullTimeProp(view, "roundEndsAt", game.Round_ends_at)
   view.Prop("currentRound", j.Uint(game.Current_round))
+  view.Prop("isLocked", j.Boolean(game.Locked))
   return view
 }

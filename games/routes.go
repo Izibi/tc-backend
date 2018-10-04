@@ -107,15 +107,16 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     m := model.New(c, db)
     game, err := m.LoadGame(gameKey, model.NullFacet)
     if err != nil { api.Error(err); return }
+    if !game.Locked { api.StringError("game is not locked"); return }
     // TODO: make the block on a remote server
-    hash, err := store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+    newBlock, err := store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
     if err != nil { api.Error(err); return }
-    // begin transaction
-    //   if success, commit "pending" commands, set new last_block, clear "pending" status of game
-    //   if failure, clear "pending" commands, clear "pending" status of game
-    // end transaction
-    es.Publish(gameChannel(gameKey), newBlockMessage(hash))
-    api.Result(j.String(hash))
+    err = m.EndRoundAndUnlock(gameKey, newBlock)
+    if err != nil { api.Error(err); return }
+    es.Publish(gameChannel(gameKey), newBlockMessage(newBlock))
+    res := j.Object()
+    res.Prop("next_block", j.String(newBlock))
+    api.Result(res)
   })
 
   r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
