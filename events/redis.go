@@ -26,6 +26,7 @@ var hi1 = color.New(color.Bold, color.FgCyan)
 var hi2 = color.New(color.Bold, color.FgBlue)
 
 type Service struct {
+  selfUrl string
   client *redis.Client
   rng *rand.Rand
   clients map[string]*redis.PubSub /* key -> pubsub instance */
@@ -37,7 +38,7 @@ type Message struct {
   Payload string
 }
 
-func NewService() (*Service, error) {
+func NewService(selfUrl string) (*Service, error) {
   var err error
   client := redis.NewClient(&redis.Options{
     Addr:     "localhost:6379",
@@ -48,7 +49,7 @@ func NewService() (*Service, error) {
   if err != nil { return nil, err }
   rng, err := seededRng()
   if err != nil { return nil, err }
-  return &Service{client, rng, map[string]*redis.PubSub{}, sync.RWMutex{}}, nil
+  return &Service{selfUrl, client, rng, map[string]*redis.PubSub{}, sync.RWMutex{}}, nil
 }
 
 func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
@@ -64,7 +65,7 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
       var err error
       if source == nil {
         var ps *redis.PubSub
-        key, ps, err = svc.newClient(c.Request.Host)
+        key, ps, err = svc.newClient(svc.selfUrl)
         if err != nil {
           writeEvent(w, &SSEvent{Event: "error", Data: err.Error()})
           return false
@@ -97,22 +98,22 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
     err = api.Request(&req)
     if err != nil { api.Error(err); return }
     var ps *redis.PubSub
-    var host string
+    var serverUrl string
     key := c.Param("key")
-    ps, host = svc.getClient(key)
+    ps, serverUrl = svc.getClient(key)
     if ps == nil {
-      if len(host) > 0 {
-        if host == c.Request.Host {
-          svc.client.Del(key)
-          api.StringError("no such client 1")
-          return
-        }
-        /* TODO: proxy request to host */
-        hi1.Printf("forward request to %s\n", host)
-        api.StringError("event request forwarding is not implemented")
+      if len(serverUrl) == 0 {
+        api.StringError("no such client")
         return
       }
-      api.StringError("no such client 2")
+      if serverUrl == svc.selfUrl {
+        svc.client.Del(key)
+        api.StringError("connection lost")
+        return
+      }
+      /* TODO: proxy request to serverUrl */
+      hi1.Printf("forward request to %s\n", serverUrl)
+      api.StringError("event request forwarding is not implemented")
       return
     }
     if len(req.Unsubscribe) > 0 {
@@ -127,13 +128,13 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
   })
 }
 
-func (svc *Service) newClient(host string) (string, *redis.PubSub, error) {
+func (svc *Service) newClient(serverUrl string) (string, *redis.PubSub, error) {
   keyBytes := make([]byte, 32, 32)
   _, err := svc.rng.Read(keyBytes)
   if err != nil { return "", nil, err }
   key := base64.RawURLEncoding.EncodeToString(keyBytes[:])
   ps := svc.client.Subscribe("system")
-  err = svc.client.Set(key, host, 0).Err()
+  err = svc.client.Set(key, serverUrl, 0).Err()
   if err != nil { return "", nil, err }
   {
     svc.mutex.Lock()
@@ -155,9 +156,9 @@ func (svc *Service) getClient(key string) (*redis.PubSub, string) {
     svc.mutex.RUnlock()
   }
   if !ok {
-    host, err := svc.client.Get(key).Result()
+    serverUrl, err := svc.client.Get(key).Result()
     if err != nil { return nil, "" }
-    return nil, host
+    return nil, serverUrl
   }
   return ps, ""
 }

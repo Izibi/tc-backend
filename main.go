@@ -35,6 +35,7 @@ import (
 type Config struct {
   Listen string `yaml:"listen"`
   MountPath string `yaml:"mount_path"`
+  SelfUrl string `yaml:"self_url"`
   SessionSecret string `yaml:"session_secret"`
   CsrfSecret string `yaml:"csrf_secret"`
   DataSource string `yaml:"data_source"`
@@ -66,7 +67,7 @@ func setupRouter(config Config) *gin.Engine {
     log.Panicf("Failed to connect to database: %s\n", err)
   }
 
-  eventService, err := events.NewService()
+  eventService, err := events.NewService(config.SelfUrl)
   if err != nil {
     log.Panicf("Failed to connect to create event service: %s\n", err)
   }
