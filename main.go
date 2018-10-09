@@ -129,6 +129,7 @@ func setupRouter(config Config) *gin.Engine {
   })
 
   router.GET("/Time", func (c *gin.Context) {
+    var err error
     reqVersion := c.GetHeader("X-Api-Version")
     req, err := semver.NewConstraint(reqVersion)
     if err != nil {
@@ -140,9 +141,9 @@ func setupRouter(config Config) *gin.Engine {
       return
     }
     type Response struct {
-      ServerTime string `json:"server_time"`
+      Result string `json:"result"`
     }
-    res := Response{ServerTime: time.Now().Format(time.RFC3339)}
+    res := Response{Result: time.Now().Format(time.RFC3339Nano)}
     c.JSON(200, &res)
   })
 
