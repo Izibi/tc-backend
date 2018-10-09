@@ -85,10 +85,19 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     if err != nil { api.Error(err); return }
     gameKey := c.Param("gameKey")
     m := model.New(c, db)
-    cmds, err := m.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
+    game, err := m.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
     if err != nil { api.Error(err); return }
+    go func () {
+      var err error
+      var newBlock string
+      newBlock, err = store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+      if err != nil { /* TODO: mark error in block */ return }
+      err = m.EndRoundAndUnlock(gameKey, newBlock)
+      if err != nil { /* TODO: mark error in block */ return }
+      es.Publish(gameChannel(gameKey), newBlockMessage(newBlock))
+    }()
     res := j.Object()
-    res.Prop("commands", j.Raw(cmds))
+    res.Prop("commands", j.Raw(game.Next_block_commands))
     api.Result(res)
   })
 

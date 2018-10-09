@@ -71,7 +71,7 @@ func (m *Model) ViewGame(gameKey string) (j.Value, error) {
 
 func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock string, teamPlayer uint, commands []byte) (err error) {
   teamId, err := m.FindTeamIdByKey(teamKey)
-  if err != nil { return }
+  if err != nil { return errors.New("team key is not recognized")}
   err = m.transaction(func () error {
     game, err := m.LoadGame(gameKey, NullFacet)
     if err != nil { return err }
@@ -89,12 +89,14 @@ func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock s
   return err
 }
 
-func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) ([]byte, error) {
+func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) (*Game, error) {
   teamId, err := m.FindTeamIdByKey(teamKey)
   if err != nil { return nil, err }
   var commands []byte
+  var game *Game
   err = m.transaction(func () error {
-    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    var err error
+    game, err = m.loadGameForUpdate(gameKey, NullFacet)
     if err != nil { return err }
     if game.Last_block != currentBlock {
       return errors.New("current block has changed")
@@ -109,10 +111,13 @@ func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) 
     if err != nil { return err }
     err = m.lockGame(game.Id, commands)
     if err != nil { return err }
+    // game, err = m.LoadGame(gameKey, NullFacet)
+    game.Next_block_commands = commands
+    game.Locked = true
     return nil
   })
   if err !=  nil { return nil, err }
-  return commands, nil
+  return game, nil
 }
 
 func (m *Model) CancelRound(gameKey string) error {
