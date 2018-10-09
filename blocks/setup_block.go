@@ -2,6 +2,7 @@
 package blocks
 
 import (
+  "bytes"
   "path/filepath"
   "io/ioutil"
   "os"
@@ -64,7 +65,7 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
     "run_setup")
   /* task_tool looks for params.json in its current directory */
   cmd.Dir(blockPath)
-  err = cmd.Run(encodedBlock)
+  err = cmd.Run(bytes.NewReader(params))
   if err != nil {
     err = errors.Errorf("Failed to run setup\n  params: %s\n  details: %s",
       string(params), string(cmd.Stderr.Bytes()))
