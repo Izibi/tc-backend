@@ -65,8 +65,11 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
   /* task_tool looks for params.json in its current directory */
   cmd.Dir(blockPath)
   err = cmd.Run(encodedBlock)
-  if err != nil { err = errors.Wrap(err, 0); return }
-  // TODO {error: "error running setup", details: runOutcome.stderr};
+  if err != nil {
+    err = errors.Errorf("Failed to run setup\n  params: %s\n  details: %s",
+      string(params), string(cmd.Stderr.Bytes()))
+    return
+  }
 
   err = store.finalizeBlock(hash, &block, &cmd.Stdout)
   if err != nil { return }

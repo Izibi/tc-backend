@@ -52,7 +52,7 @@ func (store *Store) ReadBlock(hash string) (block Block, err error) {
 func (store *Store) chainBlock(dst *BlockBase, kind string, parentHash string) error {
   /* Load the parent block. */
   parentBlock, err := store.ReadBlock(parentHash)
-  if err != nil { return err }
+  if err != nil { return fmt.Errorf("failed to read parent block %s", parentHash) }
   parentBase := parentBlock.Base()
   *dst = *parentBase
   (*dst).Kind = kind

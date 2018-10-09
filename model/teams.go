@@ -211,6 +211,7 @@ func (m *Model) FindTeamIdByKey(publicKey string) (string, error) {
   row := m.db.QueryRow(`SELECT id FROM teams WHERE public_key = ?`, publicKey)
   var id string
   err := row.Scan(&id)
+  if err == sql.ErrNoRows { return "", nil }
   if err != nil { return "", err }
   return id, nil
 }
