@@ -34,7 +34,7 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     }
     m := model.New(c, db)
     ownerId, err := m.FindTeamIdByKey(req.Author[1:])
-    if ownerId == "" { api.StringError("team key is not recognized") }
+    if ownerId == "" { api.StringError("team key is not recognized"); return }
     if err != nil { api.Error(err); return }
     gameKey, err := m.CreateGame(ownerId, req.FirstBlock)
     if err != nil { api.Error(err); return }
