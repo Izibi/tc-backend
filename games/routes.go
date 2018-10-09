@@ -5,7 +5,6 @@ import (
   "fmt"
   "database/sql"
   "github.com/gin-gonic/gin"
-  "github.com/go-errors/errors"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/blocks"
