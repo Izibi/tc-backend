@@ -16,6 +16,7 @@ type Store struct {
   Path string `yaml:"store_path"`
   TaskToolsCmd string `yaml:"task_tools_cmd"`
   TaskHelperCmd string `yaml:"task_helper_cmd"`
+  SkipDelete bool `yaml:"skip_delete"`
 }
 
 func (store *Store) IsBlock(hash string) bool {
@@ -120,6 +121,9 @@ func (store *Store) finalizeBlock(hash string, block Block, stdout io.Reader) er
 
 func (store *Store) deleteBlock(hash string) error {
   fmt.Printf("[store] delete %s\n", hash)
+  if store.SkipDelete {
+    return nil
+  }
   return os.RemoveAll(store.blockDir(hash))
 }
 
