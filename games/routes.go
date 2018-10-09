@@ -126,5 +126,5 @@ func gameChannel(gameKey string) string {
 }
 
 func newBlockMessage(hash string) string {
-  return fmt.Sprintf("block:%s", hash)
+  return fmt.Sprintf("block %s", hash)
 }
