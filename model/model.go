@@ -23,6 +23,9 @@ type Model struct {
 func New (ctx context.Context, db *sql.DB) *Model {
   model := new(Model)
   model.ctx = ctx
+  if err := db.Ping(); err != nil {
+    panic("database is unreachable")
+  }
   model.db = sqlx.NewDb(db, "mysql")
   model.result = j.Object()
   model.entities = make(map[string]j.Value)
