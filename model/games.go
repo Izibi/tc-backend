@@ -184,8 +184,8 @@ func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (ui
 func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, commands []byte) error {
   var err error
   _, err = m.db.Exec(
-    `INSERT INTO game_players (game_id, rank, team_id, team_player, commands)
-      SELECT ?, 1 + COUNT(rank), ?, ?, ?
+    `INSERT INTO game_players (game_id, rank, team_id, team_player, commands, used, unused)
+      SELECT ?, 1 + COUNT(rank), ?, ?, ?, "", ""
       FROM game_players
       WHERE game_id = ?`,
     gameId, teamId, teamPlayer, commands, gameId)
@@ -310,7 +310,7 @@ func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
   if err == sql.ErrNoRows { return nil, nil }
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
-    m.Add(fmt.Sprintf("games %s", res.Id), viewGame(&res))
+    m.Add(fmt.Sprintf("games %s", res.Id), ViewGame(&res))
   }
   return &res, nil
 }
