@@ -38,15 +38,8 @@ type Message struct {
   Payload string
 }
 
-func NewService(selfUrl string) (*Service, error) {
+func NewService(client *redis.Client, selfUrl string) (*Service, error) {
   var err error
-  client := redis.NewClient(&redis.Options{
-    Addr:     "localhost:6379",
-    Password: "", // no password set
-    DB:       0,  // use default DB
-  })
-  err = client.Ping().Err()
-  if err != nil { return nil, err }
   rng, err := seededRng()
   if err != nil { return nil, err }
   return &Service{selfUrl, client, rng, map[string]*redis.PubSub{}, sync.RWMutex{}}, nil

@@ -9,15 +9,29 @@ import (
   "os"
   "path/filepath"
   "github.com/go-errors/errors"
+  "github.com/go-redis/redis"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Store struct {
+type Config struct {
   Path string `yaml:"store_path"`
   TaskToolsCmd string `yaml:"task_tools_cmd"`
   TaskHelperCmd string `yaml:"task_helper_cmd"`
   SkipDelete bool `yaml:"skip_delete"`
 }
+
+type Store struct {
+  Config
+  Redis *redis.Client
+}
+
+func NewStore(config Config, rc *redis.Client) *Store {
+  return &Store{
+    Config: config,
+    Redis: rc,
+  }
+}
+
 
 func (store *Store) IsBlock(hash string) bool {
   if !validateHash(hash) { return false }

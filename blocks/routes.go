@@ -10,10 +10,6 @@ import (
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Config struct {
-  ApiVersion string `yaml:"api_version"`
-}
-
 func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, store *Store) {
 
   r.GET("/Blocks/:hash/zip", func (c *gin.Context) {

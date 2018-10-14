@@ -16,6 +16,7 @@ import (
   "github.com/gin-contrib/sessions"
   "github.com/gin-contrib/sessions/cookie"
   "github.com/gin-contrib/cors"
+  "github.com/go-redis/redis"
   "github.com/utrack/gin-csrf"
   _ "github.com/go-sql-driver/mysql"
   "github.com/Masterminds/semver"
@@ -67,7 +68,17 @@ func setupRouter(config Config) *gin.Engine {
     log.Panicf("Failed to connect to database: %s\n", err)
   }
 
-  eventService, err := events.NewService(config.SelfUrl)
+  rc := redis.NewClient(&redis.Options{
+    Addr:     "localhost:6379",
+    Password: "", // no password set
+    DB:       0,  // use default DB
+  })
+  err = rc.Ping().Err()
+  if err != nil {
+    log.Panicf("Failed to connect to redis: %s\n", err)
+  }
+
+  eventService, err := events.NewService(rc, config.SelfUrl)
   if err != nil {
     log.Panicf("Failed to connect to create event service: %s\n", err)
   }
