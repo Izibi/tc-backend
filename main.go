@@ -97,15 +97,16 @@ func setupRouter(config Config) *gin.Engine {
     HttpOnly: false,
   })
   r.Use(sessions.Sessions("session_name", store))
-  /* TODO: re-enable
   r.Use(csrf.Middleware(csrf.Options{
         Secret: config.CsrfSecret,
         ErrorFunc: func(c *gin.Context) {
-          c.JSON(http.StatusOK, gin.H{"error": "CSRF token mismatch"})
-          c.Abort()
+          /* Requests with no cookie can safely omit the CSRF token. */
+          if c.GetHeader("Cookie") != "" {
+            c.JSON(http.StatusOK, gin.H{"error": "CSRF token mismatch"})
+            c.Abort()
+          }
         },
     }))
-  */
   r.Use(cors.New(cors.Config{
     AllowOrigins:     []string{
       config.FrontendOrigin,
