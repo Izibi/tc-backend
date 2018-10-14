@@ -27,6 +27,7 @@ type Game struct {
   Current_round uint
   Locked bool
   Next_block_commands []byte
+  Nb_cycles_per_round uint
 }
 
 type GamePlayer struct {
@@ -52,10 +53,11 @@ type PlayerInput struct {
 func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
   var err error
   gameKey, err := generateKey()
+  var nbCyclesPerRound = 2
   if err != nil { return "", errors.Wrap(err, 0) }
   _, err = m.db.Exec(
-    `INSERT INTO games (game_key, owner_id, first_block, last_block, current_round)
-     VALUES (?, ?, ?, ?, 0)`, gameKey, ownerId, firstBlock, firstBlock)
+    `INSERT INTO games (game_key, owner_id, first_block, last_block, current_round, nb_cycles_per_round, next_block_commands)
+     VALUES (?, ?, ?, ?, 0, ?, "")`, gameKey, ownerId, firstBlock, firstBlock, nbCyclesPerRound)
   if err != nil { return "", errors.Wrap(err, 0) }
   return gameKey, nil
 }
@@ -107,7 +109,7 @@ func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) 
     if game.Locked {
       return errors.New("game is locked")
     }
-    commands, err = m.getNextBlockCommands(game.Id, 2 /* game.Nb_cycles_per_round */)
+    commands, err = m.getNextBlockCommands(game.Id, game.Nb_cycles_per_round)
     if err != nil { return err }
     err = m.lockGame(game.Id, commands)
     if err != nil { return err }
