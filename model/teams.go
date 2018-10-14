@@ -162,6 +162,7 @@ func (m *Model) LeaveTeam(teamId string, userId string) error {
 
 type UpdateTeamArg struct {
   IsOpen *bool `json:"isOpen"`
+  PublicKey *string `json:"publicKey"`
 }
 func (m *Model) UpdateTeam(teamId string, userId string, arg UpdateTeamArg) error {
 
@@ -178,6 +179,11 @@ func (m *Model) UpdateTeam(teamId string, userId string, arg UpdateTeamArg) erro
   if arg.IsOpen != nil {
     _, err = m.db.Exec(
       `UPDATE teams SET is_open = ? WHERE id = ?`, *arg.IsOpen, teamId)
+    if err != nil { return errors.Wrap(err, 0) }
+  }
+  if arg.PublicKey != nil {
+    _, err = m.db.Exec(
+      `UPDATE teams SET public_key = ? WHERE id = ?`, *arg.PublicKey, teamId)
     if err != nil { return errors.Wrap(err, 0) }
   }
 
