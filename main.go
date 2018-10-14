@@ -39,13 +39,13 @@ type Config struct {
   SelfUrl string `yaml:"self_url"`
   SessionSecret string `yaml:"session_secret"`
   CsrfSecret string `yaml:"csrf_secret"`
-  DataSource string `yaml:"data_source"`
+  DataSource string `yaml:"datasource"`
   FrontendOrigin string `yaml:"frontend_origin"`
   ApiVersion string `yaml:"api_version"`
   ApiKey string `yaml:"api_key"`
   Auth auth.Config `yaml:"auth"`
   Game games.Config `yaml:"game"`
-  Blocks blocks.Store `yaml:"blocks"`
+  Blocks blocks.Config `yaml:"blocks"`
 }
 
 func buildRootTemplate() *template.Template {
@@ -129,11 +129,13 @@ func setupRouter(config Config) *gin.Engine {
     return utils.NewResponse(c, config.ApiKey)
   }
 
+  blockStore := blocks.NewStore(config.Blocks, rc)
+
   auth.SetupRoutes(router, newApi, config.Auth, db)
   teams.SetupRoutes(router, newApi, db)
   contests.SetupRoutes(router, newApi, db)
-  blocks.SetupRoutes(router, newApi, &config.Blocks)
-  games.SetupRoutes(router, newApi, config.Game, &config.Blocks, db, eventService)
+  blocks.SetupRoutes(router, newApi, blockStore)
+  games.SetupRoutes(router, newApi, config.Game, blockStore, db, eventService)
   eventService.SetupRoutes(router, newApi)
 
   router.GET("/ping", func(c *gin.Context) {
