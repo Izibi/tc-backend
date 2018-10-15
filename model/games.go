@@ -62,15 +62,6 @@ func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
   return gameKey, nil
 }
 
-func (m *Model) ViewGame(gameKey string) (j.Value, error) {
-  game, err := m.LoadGame(gameKey, NullFacet)
-  if err != nil { return j.Null, err }
-  if game == nil {
-    return j.Null, nil
-  }
-  return viewGame(game), nil
-}
-
 func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock string, teamPlayer uint, commands []byte) (err error) {
   teamId, err := m.FindTeamIdByKey(teamKey)
   if err != nil { return errors.New("team key is not recognized")}
@@ -338,7 +329,10 @@ func generateKey() (string, error) {
   return base64.RawURLEncoding.EncodeToString(bs[:]), nil
 }
 
-func viewGame(game *Game) j.IObject {
+func ViewGame(game *Game) j.Value {
+  if game == nil {
+    return j.Null
+  }
   view := j.Object()
   view.Prop("key", j.String(game.Game_key))
   timeProp(view, "createdAt", game.Created_at)

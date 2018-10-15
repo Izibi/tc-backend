@@ -3,6 +3,7 @@ package games
 
 import (
   "fmt"
+  "strconv"
   "database/sql"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/model"
@@ -38,18 +39,54 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     if err != nil { api.Error(err); return }
     gameKey, err := m.CreateGame(ownerId, req.FirstBlock)
     if err != nil { api.Error(err); return }
-    game, err := m.ViewGame(gameKey)
+    game, err := m.LoadGame(gameKey, model.NullFacet)
     if err != nil { api.Error(err); return }
-    api.Result(game)
+    api.Result(model.ViewGame(game))
   })
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
     api := newApi(c)
     gameKey := c.Param("gameKey")
     m := model.New(c, db)
-    game, err := m.ViewGame(gameKey)
+    game, err := m.LoadGame(gameKey, model.NullFacet)
     if err != nil { api.Error(err); return }
-    api.Result(game)
+    /* The hash of the last block is a convenient ETag value. */
+    etag := fmt.Sprintf("\"%s\"", game.Last_block)
+    if c.GetHeader("If-None-Match") == etag {
+      c.Status(304)
+      return
+    }
+    result := j.Object()
+    result.Prop("game", model.ViewGame(game))
+    if game != nil {
+      lastPage, blocks, err := store.GetHeadIndex(game.Game_key, game.Last_block)
+      if err != nil { api.Error(err); return }
+      result.Prop("page", j.Uint64(lastPage))
+      result.Prop("blocks", j.Raw(blocks))
+    }
+    c.Header("ETag", etag)
+    c.Header("Cache-Control", "public, no-cache") // 1 day
+    api.Result(result)
+  })
+
+  r.GET("/Games/:gameKey/Index/:page", func (c *gin.Context) {
+    api := newApi(c)
+    gameKey := c.Param("gameKey")
+    page, err := strconv.ParseUint(c.Param("page"), 10, 64)
+    if err != nil { api.Error(err); return }
+    m := model.New(c, db)
+    game, err := m.LoadGame(gameKey, model.NullFacet)
+    if err != nil { api.Error(err); return }
+    result := j.Object()
+    result.Prop("game", model.ViewGame(game))
+    if game != nil {
+      blocks, err := store.GetPageIndex(game.Game_key, game.Last_block, page)
+      if err != nil { api.Error(err); return }
+      result.Prop("page", j.Uint64(page))
+      result.Prop("blocks", j.Raw(blocks))
+    }
+    c.Header("Cache-Control", "public, max-age=86400, immutable") // 1 day
+    api.Result(result)
   })
 
   r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
@@ -92,6 +129,8 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
       var err error
       var newBlock string
       newBlock, err = store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+      if err != nil { /* TODO: mark error in block */ return }
+      err = store.ClearHeadIndex(gameKey)
       if err != nil { /* TODO: mark error in block */ return }
       err = m.EndRoundAndUnlock(gameKey, newBlock)
       if err != nil { /* TODO: mark error in block */ return }
