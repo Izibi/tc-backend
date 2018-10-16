@@ -33,9 +33,9 @@ type Service struct {
   mutex sync.RWMutex
 }
 
-type Message struct {
-  Channel string
-  Payload string
+type EventSink struct {
+  w io.Writer
+  last *SSEvent
 }
 
 func NewService(client *redis.Client, selfUrl string) (*Service, error) {
@@ -51,20 +51,23 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
     c.Header("Cache-Control", "no-cache")
     c.Header("Connection", "keep-alive")
     c.Header("X-Accel-Buffering", "no")
+    /* TODO: send an id and use c.GetHeader("Last-Event-ID") resent by browser
+       to send any missed events */
     var key string
     var source <-chan *redis.Message
     clientGone := c.Writer.CloseNotify()
     c.Stream(func (w io.Writer) bool {
       var err error
+      var sink = EventSink{w, nil}
       if source == nil {
         var ps *redis.PubSub
         key, ps, err = svc.newClient(svc.selfUrl)
         if err != nil {
-          writeEvent(w, &SSEvent{Event: "error", Data: err.Error()})
+          sink.Write(&SSEvent{Event: "error", Data: err.Error()})
           return false
         }
         source = ps.Channel()
-        writeEvent(w, &SSEvent{Event: "key", Data: key})
+        sink.Write(&SSEvent{Event: "message", Data: encodeMessage("key", key)})
         return true
       }
       select {
@@ -76,7 +79,7 @@ func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
             svc.removeClient(key)
             return false
           }
-          writeEvent(w, &SSEvent{Event: msg.Channel, Data: msg.Payload})
+          sink.Write(&SSEvent{Event: "message", Data: encodeMessage(msg.Channel, msg.Payload)})
           return true
       }
     })
@@ -197,12 +200,12 @@ type SSEvent struct {
   Data string
 }
 
-func writeEvent(w io.Writer, m *SSEvent) {
+func (sink *EventSink) Write(m *SSEvent) {
   var buf bytes.Buffer
-  if len(m.Id) > 0 {
+  if len(m.Id) > 0 && (sink.last == nil || m.Id != sink.last.Id) {
     buf.WriteString(fmt.Sprintf("id: %s\n", noLF(m.Id)))
   }
-  if len(m.Event) > 0 {
+  if len(m.Event) > 0 && (sink.last == nil || m.Event != sink.last.Event)  {
     buf.WriteString(fmt.Sprintf("event: %s\n", noLF(m.Event)))
   }
   if len(m.Data) > 0 {
@@ -212,9 +215,19 @@ func writeEvent(w io.Writer, m *SSEvent) {
     }
   }
   buf.WriteString("\n")
-  w.Write(buf.Bytes())
+  sink.w.Write(buf.Bytes())
+  sink.last = m
 }
 
 func noLF(s string) string {
   return strings.Replace(s, "\n", "", -1)
+}
+
+func encodeMessage(channel string, payload string) string {
+  var obj = j.Object()
+  obj.Prop("channel", j.String(channel))
+  obj.Prop("payload", j.String(payload))
+  res, err := j.ToString(obj)
+  if err != nil { panic(err) }
+  return res
 }
