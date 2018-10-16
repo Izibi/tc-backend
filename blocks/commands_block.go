@@ -83,7 +83,7 @@ func (store *Store) MakeCommandBlock(parentHash string, commands []byte) (hash s
 
 func (store *Store) CheckCommands(block *BlockBase, commands string) (result []byte, err error) {
 
-  // commands = commands.replace(/[\r\n]+/g, "\n");
+  commands = strings.Replace(commands, "\r\n", "\n", -1)
 
   if block.Protocol == "" {
     err = errors.New("block has protocol")
