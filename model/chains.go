@@ -110,6 +110,27 @@ func (m *Model) ForkChain(userId string, chainId string) (string, error) {
   return exportChainId(newChain.Id), nil
 }
 
+func (m *Model) DeleteChain(userId string, chainId string) (*Chain, error) {
+  /*
+    A private chain can be deleted by its team members.
+  */
+  var err error
+  var chain Chain
+  err = m.dbMap.Get(&chain, chainId)
+  if err != nil { return nil, err }
+  team, err := m.loadUserContestTeam(userId, chain.Contest_id, BaseFacet)
+  if err != nil { return nil, err }
+  if team == nil || team.Id != chain.Owner_id.String {
+    return nil, errors.New("access denied")
+  }
+  if chain.Status_id != "1" { // FIXME hard-coded id in select id from chain_statuses where is_public = 0
+    return nil, errors.New("forbidden")
+  }
+  _, err = m.db.Exec(`DELETE FROM chains WHERE id = ?`, chainId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &chain, nil
+}
+
 func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
   var res Chain
   err := row.StructScan(&res)

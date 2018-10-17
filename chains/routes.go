@@ -47,4 +47,14 @@ func (svc *Service) Route(r gin.IRoutes) {
     ctx.resp.Result(j.String(id))
   })
 
+  r.POST("/Chains/:chainId/Delete", func(c *gin.Context) {
+    ctx := svc.Wrap(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { ctx.resp.BadUser(); return }
+    chainId := c.Param("chainId")
+    chain, err := ctx.model.DeleteChain(userId, chainId)
+    if err != nil { ctx.resp.Error(err); return }
+    ctx.resp.Result(j.Boolean(true))
+  })
+
 }
