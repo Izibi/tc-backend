@@ -22,7 +22,7 @@ func (b *CommandBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeCommandBlock(parentHash string, commands []byte) (hash string, err error) {
+func (svc *Service) MakeCommandBlock(parentHash string, commands []byte) (hash string, err error) {
 
   commands, err = j.PrettyBytes(commands)
   if err != nil { return }
@@ -30,29 +30,29 @@ func (store *Store) MakeCommandBlock(parentHash string, commands []byte) (hash s
   block := CommandBlock{
     Commands: hashResource(commands),
   }
-  err = store.chainBlock(&block.BlockBase, "command", parentHash)
+  err = svc.chainBlock(&block.BlockBase, "command", parentHash)
   if err != nil { return }
   encodedBlock := block.Marshal()
-  hash, err = store.writeBlock(encodedBlock)
+  hash, err = svc.writeBlock(encodedBlock)
   if os.IsExist(err) { return hash, nil }
   if err != nil { return }
   defer func () {
     if err != nil {
-      store.deleteBlock(hash)
+      svc.deleteBlock(hash)
     }
   }()
 
-  blockPath := store.blockDir(hash)
+  blockPath := svc.blockDir(hash)
   err = ioutil.WriteFile(filepath.Join(blockPath, "commands.json"), commands, 0644)
   if err != nil { return }
 
   /* Compile the commands.  The task tool will look for commands.json in the
      block directory (-b). */
   cmd := newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
-    "-p", store.blockDir(block.Protocol),
-    "-b", store.blockDir(hash),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
+    "-p", svc.blockDir(block.Protocol),
+    "-b", svc.blockDir(hash),
     "build_commands")
   cmd.Dir(blockPath)
   err = cmd.Run(nil)
@@ -61,27 +61,27 @@ func (store *Store) MakeCommandBlock(parentHash string, commands []byte) (hash s
 
   /* Generate the initial state. */
   cmd = newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
-    "-p", store.blockDir(block.Protocol),
-    "-b", store.blockDir(hash),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
+    "-p", svc.blockDir(block.Protocol),
+    "-b", svc.blockDir(hash),
     "run_commands")
   /* The task tool will load its inital state from state.json in the current
      directory, so run the tool in the directory of the parent block.
      XXX If the protocol writes files, it has the opportunity to alter the parent block.
    */
-  cmd.Dir(store.blockDir(parentHash))
+  cmd.Dir(svc.blockDir(parentHash))
   err = cmd.Run(nil)
   if err != nil { err = errors.Wrap(err, 0); return }
   // TODO {error: "error running setup", details: runOutcome.stderr};
 
-  err = store.finalizeBlock(hash, &block, &cmd.Stdout)
+  err = svc.finalizeBlock(hash, &block, &cmd.Stdout)
   if err != nil { return }
 
   return
 }
 
-func (store *Store) CheckCommands(block *BlockBase, commands string) (result []byte, err error) {
+func (svc *Service) CheckCommands(block *BlockBase, commands string) (result []byte, err error) {
 
   commands = strings.Replace(commands, "\r\n", "\n", -1)
 
@@ -91,9 +91,9 @@ func (store *Store) CheckCommands(block *BlockBase, commands string) (result []b
   }
 
   cmd := newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
-    "-p", store.blockDir(block.Protocol),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
+    "-p", svc.blockDir(block.Protocol),
     "check_commands")
   err = cmd.Run(strings.NewReader(commands))
   if err != nil {

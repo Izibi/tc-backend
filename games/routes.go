@@ -3,53 +3,75 @@ package games
 
 import (
   "fmt"
-  "strconv"
   "database/sql"
+  "strconv"
   "github.com/gin-gonic/gin"
+  "tezos-contests.izibi.com/backend/blocks"
+  "tezos-contests.izibi.com/backend/config"
+  "tezos-contests.izibi.com/backend/events"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
-  "tezos-contests.izibi.com/backend/blocks"
-  "tezos-contests.izibi.com/backend/events"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Config struct {
-  ApiKey string
+type Service struct {
+  config *config.Config
+  events *events.Service
+  store *blocks.Service
+  db *sql.DB
 }
 
-func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *blocks.Store, db *sql.DB, es *events.Service) {
+type Context struct {
+  c *gin.Context
+  req *utils.Request
+  resp *utils.Response
+  model *model.Model
+}
+
+func NewService(config *config.Config, events *events.Service, store *blocks.Service, db *sql.DB) *Service {
+  return &Service{config, events, store, db}
+}
+
+func (svc *Service) Wrap(c *gin.Context) *Context {
+  return &Context{
+    c,
+    utils.NewRequest(c, svc.config.ApiKey),
+    utils.NewResponse(c),
+    model.New(c, svc.db),
+  }
+}
+
+func (svc *Service) Route(r gin.IRoutes) {
 
   r.POST("/Games", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     var err error
     var req struct {
       Author string `json:"author"`
       FirstBlock string `json:"first_block"`
     }
-    err = api.SignedRequest(&req)
-    if err != nil { api.Error(err); return }
+    err = ctx.req.Signed(&req)
+    if err != nil { ctx.resp.Error(err); return }
     fmt.Printf("new game request %v\n", req)
-    if !store.IsBlock(req.FirstBlock) {
-      api.StringError("bad first block")
+    if !svc.store.IsBlock(req.FirstBlock) {
+      ctx.resp.StringError("bad first block")
       return
     }
-    m := model.New(c, db)
-    ownerId, err := m.FindTeamIdByKey(req.Author[1:])
-    if ownerId == "" { api.StringError("team key is not recognized"); return }
-    if err != nil { api.Error(err); return }
-    gameKey, err := m.CreateGame(ownerId, req.FirstBlock)
-    if err != nil { api.Error(err); return }
-    game, err := m.LoadGame(gameKey, model.NullFacet)
-    if err != nil { api.Error(err); return }
-    api.Result(model.ViewGame(game))
+    ownerId, err := ctx.model.FindTeamIdByKey(req.Author[1:])
+    if ownerId == "" { ctx.resp.StringError("team key is not recognized"); return }
+    if err != nil { ctx.resp.Error(err); return }
+    gameKey, err := ctx.model.CreateGame(ownerId, req.FirstBlock)
+    if err != nil { ctx.resp.Error(err); return }
+    game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
+    ctx.resp.Result(model.ViewGame(game))
   })
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     gameKey := c.Param("gameKey")
-    m := model.New(c, db)
-    game, err := m.LoadGame(gameKey, model.NullFacet)
-    if err != nil { api.Error(err); return }
+    game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
     /* The hash of the last block is a convenient ETag value. */
     etag := fmt.Sprintf("\"%s\"", game.Last_block)
     if c.GetHeader("If-None-Match") == etag {
@@ -59,38 +81,37 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
     result := j.Object()
     result.Prop("game", model.ViewGame(game))
     if game != nil {
-      lastPage, blocks, err := store.GetHeadIndex(game.Game_key, game.Last_block)
-      if err != nil { api.Error(err); return }
+      lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
+      if err != nil { ctx.resp.Error(err); return }
       result.Prop("page", j.Uint64(lastPage))
       result.Prop("blocks", j.Raw(blocks))
     }
     c.Header("ETag", etag)
     c.Header("Cache-Control", "public, no-cache") // 1 day
-    api.Result(result)
+    ctx.resp.Result(result)
   })
 
   r.GET("/Games/:gameKey/Index/:page", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     gameKey := c.Param("gameKey")
     page, err := strconv.ParseUint(c.Param("page"), 10, 64)
-    if err != nil { api.Error(err); return }
-    m := model.New(c, db)
-    game, err := m.LoadGame(gameKey, model.NullFacet)
-    if err != nil { api.Error(err); return }
+    if err != nil { ctx.resp.Error(err); return }
+    game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
     result := j.Object()
     result.Prop("game", model.ViewGame(game))
     if game != nil {
-      blocks, err := store.GetPageIndex(game.Game_key, game.Last_block, page)
-      if err != nil { api.Error(err); return }
+      blocks, err := svc.store.GetPageIndex(game.Game_key, game.Last_block, page)
+      if err != nil { ctx.resp.Error(err); return }
       result.Prop("page", j.Uint64(page))
       result.Prop("blocks", j.Raw(blocks))
     }
     c.Header("Cache-Control", "public, max-age=86400, immutable") // 1 day
-    api.Result(result)
+    ctx.resp.Result(result)
   })
 
   r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     var err error
     var req struct {
       Author string `json:"author"`
@@ -98,60 +119,57 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
       Player uint `json:"player"`
       Commands string `json:"commands"`
     }
-    err = api.SignedRequest(&req)
-    if err != nil { api.Error(err); return }
-    block, err := store.ReadBlock(req.CurrentBlock)
-    if err != nil { api.Error(err); return }
-    cmds, err := store.CheckCommands(block.Base(), req.Commands)
-    if err != nil { api.Error(err); return }
+    err = ctx.req.Signed(&req)
+    if err != nil { ctx.resp.Error(err); return }
+    block, err := svc.store.ReadBlock(req.CurrentBlock)
+    if err != nil { ctx.resp.Error(err); return }
+    cmds, err := svc.store.CheckCommands(block.Base(), req.Commands)
+    if err != nil { ctx.resp.Error(err); return }
     gameKey := c.Param("gameKey")
-    m := model.New(c, db)
     /* XXX pass raw commands to SetPlayerCommands */
-    err = m.SetPlayerCommands(gameKey, req.Author[1:], req.CurrentBlock, req.Player, cmds)
-    if err != nil { api.Error(err); return }
-    api.Result(j.Raw(cmds))
+    err = ctx.model.SetPlayerCommands(gameKey, req.Author[1:], req.CurrentBlock, req.Player, cmds)
+    if err != nil { ctx.resp.Error(err); return }
+    ctx.resp.Result(j.Raw(cmds))
   })
 
   r.POST("/Games/:gameKey/CloseRound", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     var err error
     var req struct {
       Author string `json:"author"`
       CurrentBlock string `json:"current_block"`
     }
-    err = api.SignedRequest(&req)
-    if err != nil { api.Error(err); return }
+    err = ctx.req.Signed(&req)
+    if err != nil { ctx.resp.Error(err); return }
     gameKey := c.Param("gameKey")
-    m := model.New(c, db)
-    game, err := m.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
-    if err != nil { api.Error(err); return }
+    game, err := ctx.model.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
+    if err != nil { ctx.resp.Error(err); return }
     go func () {
       var err error
       var newBlock string
-      newBlock, err = store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+      newBlock, err = svc.store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
       if err != nil { /* TODO: mark error in block */ return }
-      err = store.ClearHeadIndex(gameKey)
+      err = svc.store.ClearHeadIndex(gameKey)
       if err != nil { /* TODO: mark error in block */ return }
-      err = m.EndRoundAndUnlock(gameKey, newBlock)
+      err = ctx.model.EndRoundAndUnlock(gameKey, newBlock)
       if err != nil { /* TODO: mark error in block */ return }
-      es.Publish(gameChannel(gameKey), newBlockMessage(newBlock))
+      svc.events.Publish(ctx.GameChannel(gameKey), ctx.NewBlockMessage(newBlock))
     }()
     res := j.Object()
     res.Prop("commands", j.Raw(game.Next_block_commands))
-    api.Result(res)
+    ctx.resp.Result(res)
   })
 
   r.POST("/Games/:gameKey/CancelRound", func (c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     gameKey := c.Param("gameKey")
-    m := model.New(c, db)
-    err := m.CancelRound(gameKey)
-    if err != nil { api.Error(err); return }
-    api.Result(j.Null)
+    err := ctx.model.CancelRound(gameKey)
+    if err != nil { ctx.resp.Error(err); return }
+    ctx.resp.Result(j.Null)
   })
 
   r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
-    err := es.Publish(c.Param("gameKey"), "ping")
+    err := svc.events.Publish(c.Param("gameKey"), "ping")
     if err != nil {
       c.JSON(500, gin.H{"error": err.Error()})
       return
@@ -161,10 +179,10 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, store *block
 
 }
 
-func gameChannel(gameKey string) string {
+func (c *Context) GameChannel(gameKey string) string {
   return fmt.Sprintf("games/%s", gameKey)
 }
 
-func newBlockMessage(hash string) string {
+func (c *Context) NewBlockMessage(hash string) string {
   return fmt.Sprintf("block %s", hash)
 }

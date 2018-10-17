@@ -9,40 +9,19 @@ import (
   "os"
   "path/filepath"
   "github.com/go-errors/errors"
-  "github.com/go-redis/redis"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Config struct {
-  Path string `yaml:"store_path"`
-  TaskToolsCmd string `yaml:"task_tools_cmd"`
-  TaskHelperCmd string `yaml:"task_helper_cmd"`
-  SkipDelete bool `yaml:"skip_delete"`
-}
-
-type Store struct {
-  Config
-  Redis *redis.Client
-}
-
-func NewStore(config Config, rc *redis.Client) *Store {
-  return &Store{
-    Config: config,
-    Redis: rc,
-  }
-}
-
-
-func (store *Store) IsBlock(hash string) bool {
+func (svc *Service) IsBlock(hash string) bool {
   if !validateHash(hash) { return false }
-  blockDir := store.blockDir(hash)
+  blockDir := svc.blockDir(hash)
   fi, err := os.Stat(blockDir)
   return err == nil && fi.IsDir()
 }
 
-func (store *Store) ReadBlock(hash string) (block Block, err error) {
+func (svc *Service) ReadBlock(hash string) (block Block, err error) {
   if !validateHash(hash) { return nil, errors.New("invalid hash") }
-  blockPath := filepath.Join(store.blockDir(hash), "block.json")
+  blockPath := filepath.Join(svc.blockDir(hash), "block.json")
   blockBytes, err := ioutil.ReadFile(blockPath)
   if err != nil { err = errors.Wrap(err, 0); return }
   var base BlockBase
@@ -66,9 +45,9 @@ func (store *Store) ReadBlock(hash string) (block Block, err error) {
   return
 }
 
-func (store *Store) chainBlock(dst *BlockBase, kind string, parentHash string) error {
+func (svc *Service) chainBlock(dst *BlockBase, kind string, parentHash string) error {
   /* Load the parent block. */
-  parentBlock, err := store.ReadBlock(parentHash)
+  parentBlock, err := svc.ReadBlock(parentHash)
   if err != nil { return fmt.Errorf("failed to read parent block %s", parentHash) }
   parentBase := parentBlock.Base()
   *dst = *parentBase
@@ -89,25 +68,25 @@ func (store *Store) chainBlock(dst *BlockBase, kind string, parentHash string) e
   return nil
 }
 
-func (store *Store) writeBlock(block j.Value) (hash string, err error) {
+func (svc *Service) writeBlock(block j.Value) (hash string, err error) {
   blockBytes, err := j.ToPrettyBytes(block)
   if err != nil { err = errors.Wrap(err, 0); return }
   hash = hashBlock(blockBytes)
-  blockDir := store.blockDir(hash)
+  blockDir := svc.blockDir(hash)
   err = os.MkdirAll(blockDir, 0755)
   if err != nil { err = errors.Wrap(err, 0); return }
   blockPath := filepath.Join(blockDir, "block.json")
   err = createFile(blockPath, blockBytes, 0644)
   if os.IsExist(err) { return /* unwrapped */ }
   if err != nil { err = errors.Wrap(err, 0); return }
-  fmt.Printf("[store] create %s\n", hash)
+  fmt.Printf("[svc] create %s\n", hash)
   return
 }
 
-func (store *Store) finalizeBlock(hash string, block Block, stdout io.Reader) error {
+func (svc *Service) finalizeBlock(hash string, block Block, stdout io.Reader) error {
 
-  fmt.Printf("[store] finalize %s\n", hash)
-  blockDir := store.blockDir(hash)
+  fmt.Printf("[svc] finalize %s\n", hash)
+  blockDir := svc.blockDir(hash)
 
   /* Decode the command output.
      TODO: do this in a goroutine instead of reading all input into a buffer. */
@@ -126,30 +105,18 @@ func (store *Store) finalizeBlock(hash string, block Block, stdout io.Reader) er
   if err != nil { return errors.Wrap(err, 0) }
 
   /* Run the helper. */
-  cmd := newCommand(store.taskHelperPath(block.Base().Task), store.blockDir(hash))
+  cmd := newCommand(svc.taskHelperPath(block.Base().Task), svc.blockDir(hash))
   err = cmd.Run(nil)
   if err != nil { return errors.Wrap(err, 0) }
 
   return nil
 }
 
-func (store *Store) deleteBlock(hash string) error {
-  if store.SkipDelete {
-    fmt.Printf("[store] delete %s (skipped)\n", hash)
+func (svc *Service) deleteBlock(hash string) error {
+  if svc.config.Blocks.SkipDelete {
+    fmt.Printf("[svc] delete %s (skipped)\n", hash)
     return nil
   }
-  fmt.Printf("[store] delete %s\n", hash)
-  return os.RemoveAll(store.blockDir(hash))
-}
-
-func (store *Store) taskToolsPath(taskBlockHash string) string {
-  return filepath.Join(store.Path, taskBlockHash, store.TaskToolsCmd)
-}
-
-func (store *Store) taskHelperPath(taskBlockHash string) string {
-  return filepath.Join(store.Path, taskBlockHash, store.TaskHelperCmd)
-}
-
-func (store *Store) blockDir(hash string) string {
-  return filepath.Join(store.Path, hash)
+  fmt.Printf("[svc] delete %s\n", hash)
+  return os.RemoveAll(svc.blockDir(hash))
 }

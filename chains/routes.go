@@ -2,25 +2,49 @@
 package chains
 
 import (
+  "fmt"
   "database/sql"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/auth"
-  "tezos-contests.izibi.com/backend/model"
   j "tezos-contests.izibi.com/backend/jase"
   "tezos-contests.izibi.com/backend/utils"
+  "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/config"
 )
 
-func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, db *sql.DB) {
+type Service struct {
+  config *config.Config
+  db *sql.DB
+}
+
+type Context struct {
+  c *gin.Context
+  resp *utils.Response
+  model *model.Model
+}
+
+func NewService(config *config.Config, db *sql.DB) *Service {
+  return &Service{config, db}
+}
+
+func (svc *Service) Wrap(c *gin.Context) *Context {
+  return &Context{
+    c,
+    utils.NewResponse(c),
+    model.New(c, svc.db),
+  }
+}
+
+func (svc *Service) Route(r gin.IRoutes) {
 
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
-    api := newApi(c)
+    ctx := svc.Wrap(c)
     userId, ok := auth.GetUserId(c)
-    if !ok { api.BadUser(); return }
+    if !ok { ctx.resp.BadUser(); return }
     chainId := c.Param("chainId")
-    m := model.New(c, db)
-    id, err := m.ForkChain(userId, chainId)
-    if err != nil { api.Error(err); return }
-    api.Result(j.String(id))
+    id, err := ctx.model.ForkChain(userId, chainId)
+    if err != nil { ctx.resp.Error(err); return }
+    ctx.resp.Result(j.String(id))
   })
 
 }

@@ -5,44 +5,67 @@ package auth
 
 import (
 
-  "database/sql"
   "io/ioutil"
   "net/http"
+  "database/sql"
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
   "golang.org/x/oauth2"
-
   j "tezos-contests.izibi.com/backend/jase"
+
+  "tezos-contests.izibi.com/backend/config"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
 
 )
 
-func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) {
+type Service struct {
+  config *config.Config
+  oauth *oauth2.Config
+  db *sql.DB
+}
 
+type Context struct {
+  c *gin.Context
+  resp *utils.Response
+  model *model.Model
+}
+
+func NewService(config *config.Config, db *sql.DB) *Service {
   oauthConf := &oauth2.Config{
-      ClientID: config.ClientID,
-      ClientSecret: config.ClientSecret,
-      RedirectURL: config.RedirectURL,
+      ClientID: config.Auth.ClientID,
+      ClientSecret: config.Auth.ClientSecret,
+      RedirectURL: config.Auth.RedirectURL,
       Endpoint: oauth2.Endpoint{
-        AuthURL: config.AuthURL,
-        TokenURL: config.TokenURL,
+        AuthURL: config.Auth.AuthURL,
+        TokenURL: config.Auth.TokenURL,
       },
       Scopes: []string{"account"},
   }
+  return &Service{config, oauthConf, db}
+}
+
+func (svc *Service) Wrap(c *gin.Context) *Context {
+  return &Context{
+    c,
+    utils.NewResponse(c),
+    model.New(c, svc.db),
+  }
+}
+
+func (svc *Service) Route(r gin.IRoutes) {
 
   r.GET("/User", func (c *gin.Context) {
-    api := newApi(c)
-    m := model.New(c, db)
+    ctx := svc.Wrap(c)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
       userId := val.(string)
-      err := m.ViewUser(userId)
-      if err != nil { api.Error(err); return }
+      err := ctx.model.ViewUser(userId)
+      if err != nil { ctx.resp.Error(err); return }
     }
-    api.Send(m.Flat())
+    ctx.resp.Send(ctx.model.Flat())
   })
 
   r.GET("/Login", func (c *gin.Context) {
@@ -56,7 +79,7 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
     session := sessions.Default(c)
     session.Set("state", state)
     session.Save()
-    c.Redirect(http.StatusSeeOther, oauthConf.AuthCodeURL(state))
+    c.Redirect(http.StatusSeeOther, svc.oauth.AuthCodeURL(state))
   })
 
   r.GET("/Login/:userId", func (c *gin.Context) {
@@ -69,6 +92,7 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
   })
 
   r.GET("/LoginComplete", func (c *gin.Context) {
+    ctx := svc.Wrap(c)
 
     errStr := c.Query("error")
     if errStr != "" {
@@ -83,11 +107,11 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
     }
 
     // verboseC := context.WithValue(c, oauth2.HTTPClient, utils.VerboseHttpClient())
-    token, err := oauthConf.Exchange(c, c.Query("code"))
+    token, err := svc.oauth.Exchange(c, c.Query("code"))
     if err != nil { c.AbortWithError(500, err); return }
 
-    client := oauthConf.Client(c, token)
-    resp, err := client.Get(config.ProfileURL)
+    client := svc.oauth.Client(c, token)
+    resp, err := client.Get(svc.config.Auth.ProfileURL)
     if err != nil { c.AbortWithError(500, err); return }
     defer resp.Body.Close()
 
@@ -95,8 +119,7 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
     if err != nil { c.AbortWithError(500, err); return }
 
     profile := LoadUserProfile(body)
-    m := model.New(c, db)
-    userId, err := m.ImportUserProfile(profile)
+    userId, err := ctx.model.ImportUserProfile(profile)
     if err != nil { c.AbortWithError(500, err); return }
 
     session.Set("userId", userId)
@@ -109,7 +132,7 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{
       Message: messageStr,
-      Target: config.FrontendOrigin,
+      Target: svc.config.FrontendOrigin,
     }
     c.HTML(http.StatusOK, "loginComplete", data)
   })
@@ -130,8 +153,8 @@ func SetupRoutes(r gin.IRoutes, newApi utils.NewApi, config Config, db *sql.DB) 
     if err != nil { c.AbortWithError(500, err) }
     data := logoutCompleteData{
       Message: messageStr,
-      Target: config.FrontendOrigin,
-      LogoutUrl: config.LogoutURL,
+      Target: svc.config.FrontendOrigin,
+      LogoutUrl: svc.config.Auth.LogoutURL,
     }
 
     c.HTML(http.StatusOK, "logoutComplete", data)

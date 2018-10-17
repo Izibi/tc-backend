@@ -9,6 +9,12 @@ import (
   "net/http"
 )
 
+func VerboseHttpClient() *http.Client {
+  return &http.Client{
+    Transport: wrappedRT{http.DefaultTransport},
+  }
+}
+
 type wrappedRT struct {
     base http.RoundTripper
 }
@@ -22,10 +28,4 @@ func (rt wrappedRT) RoundTrip(r *http.Request) (*http.Response, error) {
   fmt.Printf("http> Body %s\n", string(bs))
   r.Body = ioutil.NopCloser(bytes.NewReader(bs))
   return rt.base.RoundTrip(r)
-}
-
-func VerboseHttpClient() *http.Client {
-  return &http.Client{
-    Transport: wrappedRT{http.DefaultTransport},
-  }
 }

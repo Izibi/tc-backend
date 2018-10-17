@@ -131,6 +131,7 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
       parentId = j.String(res.Parent_id.String)
     }
     view.Prop("parentId", parentId)
+    view.Prop("statusId", j.String(res.Status_id))
     view.Prop("title", j.String(res.Title))
     view.Prop("description", j.String(res.Description))
     view.Prop("interfaceText", j.String(res.Interface_text))

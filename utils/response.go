@@ -1,39 +1,22 @@
 
-/*
-  Helper file to handle API requests/responses in a uniform way.
-  TODO: move to api package and rename Response to API
-*/
-
 package utils
 
 import (
   "fmt"
-  "encoding/json"
   "github.com/gin-gonic/gin"
   "github.com/fatih/color"
-  "tezos-contests.izibi.com/backend/signing"
+  "github.com/go-errors/errors"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-var notice = color.New(color.Bold, color.FgGreen)
-
-type ModelResponse interface {
-  Result() j.IObject
-  Entities() j.IObject
-}
+var notice = color.New(color.Bold, color.FgGreen) // XXX move to separate file
 
 type Response struct {
   context *gin.Context
-  apiKey string
 }
 
-type NewApi func (c *gin.Context) *Response
-
-func NewResponse(c *gin.Context, apiKey string) *Response {
-  return &Response{
-    context: c,
-    apiKey: apiKey,
-  }
+func NewResponse(c *gin.Context) *Response {
+  return &Response{c}
 }
 
 func (r *Response) Send(data j.Value) {
@@ -50,25 +33,20 @@ func (r *Response) Result(val j.Value) {
   r.Send(res)
 }
 
-func (r *Response) logRequestBody(bs []byte) {
-  notice.Print("<- ")
-  fmt.Printf("%s\n", string(bs))
+func (r *Response) Error(err error) {
+  res := j.Object()
+  res.Prop("error", j.String(err.Error()))
+  err2, ok := err.(*errors.Error)
+  if ok {
+    res.Prop("location", j.String(traceLocation(err2.ErrorStack())))
+  }
+  r.Send(res)
 }
 
-func (r *Response) Request(req interface{}) error {
-  body, err := r.context.GetRawData()
-  if err != nil { return err }
-  return json.Unmarshal(body, req)
+func (r *Response) StringError(msg string) {
+  r.Error(errors.Wrap(msg, 1))
 }
 
-func (r *Response) SignedRequest(req interface{}) error {
-  // TODO: check r.context.ContentType() is "application/json"
-  body, err := r.context.GetRawData()
-  if err != nil { return err }
-  r.logRequestBody(body)
-  err = signing.Verify(r.apiKey, body)
-  if err != nil { return err }
-  err = json.Unmarshal(body, req)
-  if err != nil { return err }
-  return nil
+func (r *Response) BadUser() {
+  r.StringError("you don't exist")
 }

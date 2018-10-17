@@ -23,33 +23,33 @@ func (b *ProtocolBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, err error) {
+func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, err error) {
 
   block := ProtocolBlock{
     Interface: hashResource(intf),
     Implementation: hashResource(impl),
   }
-  err = store.chainBlock(&block.BlockBase, "protocol", parentHash)
+  err = svc.chainBlock(&block.BlockBase, "protocol", parentHash)
   if err != nil { return }
   encodedBlock := block.Marshal()
-  hash, err = store.writeBlock(encodedBlock)
+  hash, err = svc.writeBlock(encodedBlock)
   if os.IsExist(err) { return hash, nil }
   if err != nil { return }
   defer func () {
     if err != nil {
-      store.deleteBlock(hash)
+      svc.deleteBlock(hash)
     }
   }()
 
-  blockPath := store.blockDir(hash)
+  blockPath := svc.blockDir(hash)
   err = ioutil.WriteFile(filepath.Join(blockPath, "bare_protocol.mli"), intf, 0644)
   if err != nil { return }
   err = ioutil.WriteFile(filepath.Join(blockPath, "bare_protocol.ml"), impl, 0644)
   if err != nil { return }
 
   cmd := newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
     "-p", blockPath,
     "build_protocol")
   err = cmd.Run(nil)

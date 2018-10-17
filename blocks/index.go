@@ -18,10 +18,10 @@ var HeadIndexExpiry = 1 * time.Hour
 var PageIndexExpiry = 24 * time.Hour
 
 /* Should it be keyed by game key, or last-block hash? */
-func (st *Store) GetHeadIndex(gameKey string, lastBlock string) (uint64, []byte, error) {
+func (svc *Service) GetHeadIndex(gameKey string, lastBlock string) (uint64, []byte, error) {
   var err error
   var key = headIndexKey(gameKey)
-  bs, _ := st.Redis.Get(key).Bytes()
+  bs, _ := svc.redis.Get(key).Bytes()
   if len(bs) != 0 {
     type HeadIndex struct {
       Page uint64 `json:"page"`
@@ -32,35 +32,35 @@ func (st *Store) GetHeadIndex(gameKey string, lastBlock string) (uint64, []byte,
     if err != nil { return 0, nil, errors.Wrap(err, 0) }
     return index.Page, []byte(index.Blocks), nil
   }
-  page, blocks, err := st.buildHeadIndex(lastBlock)
+  page, blocks, err := svc.buildHeadIndex(lastBlock)
   if err != nil { return 0, nil, err }
   var obj = j.Object()
   obj.Prop("page", j.Uint64(page))
   obj.Prop("blocks", j.Raw(blocks))
   objBytes, err := j.ToBytes(obj)
   if err != nil { return 0, nil, errors.Wrap(err, 0) }
-  err = st.Redis.Set(key, objBytes, HeadIndexExpiry).Err()
+  err = svc.redis.Set(key, objBytes, HeadIndexExpiry).Err()
   if err != nil { return 0, nil, errors.Wrap(err, 0) }
   return page, blocks, nil
 }
 
-func (st *Store) ClearHeadIndex(lastBlock string) error {
-  err := st.Redis.Del(headIndexKey(lastBlock)).Err()
+func (svc *Service) ClearHeadIndex(lastBlock string) error {
+  err := svc.redis.Del(headIndexKey(lastBlock)).Err()
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
-func (st *Store) GetPageIndex(gameKey string, lastBlock string, page uint64) ([]byte, error) {
+func (svc *Service) GetPageIndex(gameKey string, lastBlock string, page uint64) ([]byte, error) {
   var err error
   /* Is the page index in the cache? */
   var pageKey = pageIndexKey(gameKey, page)
-  bs, _ := st.Redis.Get(pageKey).Bytes()
+  bs, _ := svc.redis.Get(pageKey).Bytes()
   if len(bs) != 0 {
     return bs, nil
   }
   /* Starting with the HEAD index, use the page's first block as the parent of
      the last block of the preceding page, until we reach the requested page. */
-  nextPage, blocks, err := st.GetHeadIndex(gameKey, lastBlock)
+  nextPage, blocks, err := svc.GetHeadIndex(gameKey, lastBlock)
   if err != nil { return nil, err }
   if page >= nextPage {
     return nil, errors.New("bad page number")
@@ -68,22 +68,22 @@ func (st *Store) GetPageIndex(gameKey string, lastBlock string, page uint64) ([]
   for page < nextPage {
     nextPage--
     pageKey = pageIndexKey(gameKey, nextPage)
-    cached, _ := st.Redis.Get(pageKey).Bytes()
+    cached, _ := svc.redis.Get(pageKey).Bytes()
     if len(bs) != 0 {
       blocks = cached
     } else {
       parentHash := jsoniter.Get(blocks, 0, "hash").ToString()
-      blocks, err = st.buildPageIndex(parentHash)
+      blocks, err = svc.buildPageIndex(parentHash)
       if err != nil { return nil, err }
-      err = st.Redis.Set(pageKey, blocks, PageIndexExpiry).Err()
+      err = svc.redis.Set(pageKey, blocks, PageIndexExpiry).Err()
       if err != nil { return nil, err }
     }
   }
   return blocks, nil
 }
 
-func (st *Store) buildHeadIndex(lastBlock string) (uint64, []byte, error) {
-  block, err := st.ReadBlock(lastBlock)
+func (svc *Service) buildHeadIndex(lastBlock string) (uint64, []byte, error) {
+  block, err := svc.ReadBlock(lastBlock)
   if err != nil { return 0, nil, err }
   var base = block.Base()
   var page = base.Sequence / PageSize // truncated
@@ -101,7 +101,7 @@ func (st *Store) buildHeadIndex(lastBlock string) (uint64, []byte, error) {
       break
     }
     hash = base.Parent
-    block, err := st.ReadBlock(hash)
+    block, err := svc.ReadBlock(hash)
     if err != nil {
       err = errors.Errorf("failed to load block %s: %v", hash, err)
       return 0, nil, err
@@ -119,8 +119,8 @@ func (st *Store) buildHeadIndex(lastBlock string) (uint64, []byte, error) {
 }
 
 /* parentHash is the hash of the first block in the next page. */
-func (st *Store) buildPageIndex(parentHash string) ([]byte, error) {
-  block, err := st.ReadBlock(parentHash)
+func (svc *Service) buildPageIndex(parentHash string) ([]byte, error) {
+  block, err := svc.ReadBlock(parentHash)
   if err != nil { return nil, err }
   var base = block.Base()
   var nextPage = base.Sequence / PageSize
@@ -128,7 +128,7 @@ func (st *Store) buildPageIndex(parentHash string) ([]byte, error) {
   var items = make([]j.Value, PageSize, PageSize)
   for i := PageSize - 1; i >= 0; i-- {
     hash := base.Parent
-    block, err := st.ReadBlock(hash)
+    block, err := svc.ReadBlock(hash)
     if err != nil {
       err = errors.Errorf("failed to load block %s: %v", hash, err)
       return nil, err

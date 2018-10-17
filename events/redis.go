@@ -11,10 +11,9 @@ import (
   "math/rand"
   "strings"
   "sync"
-  "github.com/gin-gonic/gin"
   "github.com/go-redis/redis"
-  "tezos-contests.izibi.com/backend/utils"
   "github.com/fatih/color"
+  "tezos-contests.izibi.com/backend/config"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -26,7 +25,7 @@ var hi1 = color.New(color.Bold, color.FgCyan)
 var hi2 = color.New(color.Bold, color.FgBlue)
 
 type Service struct {
-  selfUrl string
+  config *config.Config
   client *redis.Client
   rng *rand.Rand
   clients map[string]*redis.PubSub /* key -> pubsub instance */
@@ -38,90 +37,11 @@ type EventSink struct {
   last *SSEvent
 }
 
-func NewService(client *redis.Client, selfUrl string) (*Service, error) {
+func NewService(cfg *config.Config, client *redis.Client) (*Service, error) {
   var err error
   rng, err := seededRng()
   if err != nil { return nil, err }
-  return &Service{selfUrl, client, rng, map[string]*redis.PubSub{}, sync.RWMutex{}}, nil
-}
-
-func (svc *Service) SetupRoutes(router gin.IRoutes, newApi utils.NewApi) {
-  router.GET("/Events", func (c *gin.Context) {
-    c.Header("Content-Type", "text/event-stream")
-    c.Header("Cache-Control", "no-cache")
-    c.Header("Connection", "keep-alive")
-    c.Header("X-Accel-Buffering", "no")
-    /* TODO: send an id and use c.GetHeader("Last-Event-ID") resent by browser
-       to send any missed events */
-    var key string
-    var source <-chan *redis.Message
-    clientGone := c.Writer.CloseNotify()
-    c.Stream(func (w io.Writer) bool {
-      var err error
-      var sink = EventSink{w, nil}
-      if source == nil {
-        var ps *redis.PubSub
-        key, ps, err = svc.newClient(svc.selfUrl)
-        if err != nil {
-          sink.Write(&SSEvent{Event: "error", Data: err.Error()})
-          return false
-        }
-        source = ps.Channel()
-        sink.Write(&SSEvent{Event: "message", Data: encodeMessage("key", key)})
-        return true
-      }
-      select {
-        case <-clientGone:
-          svc.removeClient(key)
-          return false
-        case msg := <-source:
-          if msg == nil {
-            svc.removeClient(key)
-            return false
-          }
-          sink.Write(&SSEvent{Event: "message", Data: encodeMessage(msg.Channel, msg.Payload)})
-          return true
-      }
-    })
-  })
-  router.POST("/Events/:key", func (c *gin.Context) {
-    api := newApi(c)
-    var err error
-    var req struct {
-      Subscribe []string `json:"subscribe"`
-      Unsubscribe []string `json:"unsubscribe"`
-    }
-    err = api.Request(&req)
-    if err != nil { api.Error(err); return }
-    var ps *redis.PubSub
-    var serverUrl string
-    key := c.Param("key")
-    ps, serverUrl = svc.getClient(key)
-    if ps == nil {
-      if len(serverUrl) == 0 {
-        api.StringError("no such client")
-        return
-      }
-      if serverUrl == svc.selfUrl {
-        svc.client.Del(key)
-        api.StringError("connection lost")
-        return
-      }
-      /* TODO: proxy request to serverUrl */
-      hi1.Printf("forward request to %s\n", serverUrl)
-      api.StringError("event request forwarding is not implemented")
-      return
-    }
-    if len(req.Unsubscribe) > 0 {
-      err = ps.Unsubscribe(req.Unsubscribe...)
-      if err != nil { api.Error(err); return }
-    }
-    if len(req.Subscribe) > 0 {
-      err = ps.Subscribe(req.Subscribe...)
-      if err != nil { api.Error(err); return }
-    }
-    api.Result(j.Boolean(true))
-  })
+  return &Service{cfg, client, rng, map[string]*redis.PubSub{}, sync.RWMutex{}}, nil
 }
 
 func (svc *Service) newClient(serverUrl string) (string, *redis.PubSub, error) {

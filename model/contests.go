@@ -20,6 +20,7 @@ type Contest struct {
   Starts_at string
   Ends_at string
   Required_badge_id string
+  // Contest_period_id string
 }
 
 func (m *Model) ViewUserContests(userId string) error {

@@ -21,7 +21,7 @@ func (b *SetupBlock) Marshal() j.IObject {
   return res
 }
 
-func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash string, err error) {
+func (svc *Service) MakeSetupBlock(parentHash string, params []byte) (hash string, err error) {
 
   params, err = j.PrettyBytes(params)
   if err != nil { err = errors.Wrap(err, 0); return }
@@ -29,28 +29,28 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
   block := SetupBlock{
     Params: hashResource(params),
   }
-  err = store.chainBlock(&block.BlockBase, "setup", parentHash)
+  err = svc.chainBlock(&block.BlockBase, "setup", parentHash)
   if err != nil { return }
   encodedBlock := block.Marshal()
-  hash, err = store.writeBlock(encodedBlock)
+  hash, err = svc.writeBlock(encodedBlock)
   if os.IsExist(err) { return hash, nil }
   if err != nil { return }
   defer func () {
     if err != nil {
-      store.deleteBlock(hash)
+      svc.deleteBlock(hash)
     }
   }()
 
-  blockPath := store.blockDir(hash)
+  blockPath := svc.blockDir(hash)
   err = ioutil.WriteFile(filepath.Join(blockPath, "params.json"), params, 0644)
   if err != nil { err = errors.Wrap(err, 0); return }
 
   /* Compile the setup code. */
   cmd := newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
-    "-p", store.blockDir(block.Protocol),
-    "-b", store.blockDir(hash),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
+    "-p", svc.blockDir(block.Protocol),
+    "-b", svc.blockDir(hash),
     "build_setup")
   err = cmd.Run(nil)
   // TODO: error {error: "error building setup", details: buildOutcome.stderr}
@@ -58,10 +58,10 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
 
   /* Generate the initial state. */
   cmd = newCommand(
-    store.taskToolsPath(block.Task),
-    "-t", store.blockDir(block.Task),
-    "-p", store.blockDir(block.Protocol),
-    "-b", store.blockDir(hash),
+    svc.taskToolsPath(block.Task),
+    "-t", svc.blockDir(block.Task),
+    "-p", svc.blockDir(block.Protocol),
+    "-b", svc.blockDir(hash),
     "run_setup")
   /* task_tool looks for params.json in its current directory */
   cmd.Dir(blockPath)
@@ -72,7 +72,7 @@ func (store *Store) MakeSetupBlock(parentHash string, params []byte) (hash strin
     return
   }
 
-  err = store.finalizeBlock(hash, &block, &cmd.Stdout)
+  err = svc.finalizeBlock(hash, &block, &cmd.Stdout)
   if err != nil { return }
 
   return

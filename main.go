@@ -22,32 +22,18 @@ import (
   "github.com/Masterminds/semver"
   "gopkg.in/yaml.v2"
 
-  "tezos-contests.izibi.com/backend/utils"
-  "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
-  "tezos-contests.izibi.com/backend/teams"
   "tezos-contests.izibi.com/backend/contests"
-  "tezos-contests.izibi.com/backend/chains"
-  "tezos-contests.izibi.com/backend/games"
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/events"
+  "tezos-contests.izibi.com/backend/teams"
+  "tezos-contests.izibi.com/backend/chains"
+  "tezos-contests.izibi.com/backend/games"
+  "tezos-contests.izibi.com/backend/utils"
+  "tezos-contests.izibi.com/backend/model"
+  cfg "tezos-contests.izibi.com/backend/config"
 
 )
-
-type Config struct {
-  Listen string `yaml:"listen"`
-  MountPath string `yaml:"mount_path"`
-  SelfUrl string `yaml:"self_url"`
-  SessionSecret string `yaml:"session_secret"`
-  CsrfSecret string `yaml:"csrf_secret"`
-  DataSource string `yaml:"datasource"`
-  FrontendOrigin string `yaml:"frontend_origin"`
-  ApiVersion string `yaml:"api_version"`
-  ApiKey string `yaml:"api_key"`
-  Auth auth.Config `yaml:"auth"`
-  Game games.Config `yaml:"game"`
-  Blocks blocks.Config `yaml:"blocks"`
-}
 
 func buildRootTemplate() *template.Template {
   t := template.New("")
@@ -58,12 +44,25 @@ func buildRootTemplate() *template.Template {
   return t
 }
 
-func setupRouter(config Config) *gin.Engine {
+func main() {
+
+  color.NoColor = false
+
   var err error
+  var configFile []byte
+  configFile, err = ioutil.ReadFile("config.yaml")
+  if err != nil { panic(err) }
+  var config cfg.Config
+  err = yaml.Unmarshal(configFile, &config)
+  if err != nil { panic(err) }
+  if config.Blocks.Path == "" {
+    // TODO
+  }
+  if config.Auth.FrontendOrigin == "" {
+    config.Auth.FrontendOrigin = config.FrontendOrigin
+  }
+
   var db *sql.DB
-
-  apiVersion := semver.MustParse(config.ApiVersion)
-
   db, err = sql.Open("mysql", config.DataSource)
   if err != nil {
     log.Panicf("Failed to connect to database: %s\n", err)
@@ -79,15 +78,16 @@ func setupRouter(config Config) *gin.Engine {
     log.Panicf("Failed to connect to redis: %s\n", err)
   }
 
-  eventService, err := events.NewService(rc, config.SelfUrl)
-  if err != nil {
-    log.Panicf("Failed to connect to create event service: %s\n", err)
-  }
+  apiVersion := semver.MustParse(config.ApiVersion)
+
+  /*
+  f, _ := os.Create("gin.log")
+  gin.DefaultWriter = io.MultiWriter(f)
+  gin.SetMode(gin.ReleaseMode)
+  */
 
   // Disable Console Color
   // gin.DisableConsoleColor()
-  r := gin.Default()
-  r.SetHTMLTemplate(buildRootTemplate())
 
   store := cookie.NewStore([]byte(config.SessionSecret))
   store.Options(sessions.Options{
@@ -97,8 +97,11 @@ func setupRouter(config Config) *gin.Engine {
     Secure:   false,
     HttpOnly: false,
   })
-  r.Use(sessions.Sessions("session_name", store))
-  r.Use(csrf.Middleware(csrf.Options{
+
+  var engine = gin.Default()
+  engine.SetHTMLTemplate(buildRootTemplate())
+  engine.Use(sessions.Sessions("session_name", store))
+  engine.Use(csrf.Middleware(csrf.Options{
         Secret: config.CsrfSecret,
         ErrorFunc: func(c *gin.Context) {
           /* Requests with no cookie can safely omit the CSRF token. */
@@ -108,38 +111,33 @@ func setupRouter(config Config) *gin.Engine {
           }
         },
     }))
-  r.Use(cors.New(cors.Config{
-    AllowOrigins:     []string{
-      config.FrontendOrigin,
-    },
+  engine.Use(cors.New(cors.Config{
+    //AllowAllOrigins: true,
+    AllowOrigins:     []string{config.FrontendOrigin},
     AllowMethods:     []string{"GET", "POST"},
-    AllowHeaders:     []string{"Origin"},
+    AllowHeaders:     []string{"X-Csrf-Token"},
     ExposeHeaders:    []string{"Content-Length"},
     AllowCredentials: true,
     MaxAge: 12 * time.Hour,
   }))
 
-  var router gin.IRoutes
-  mountPath := config.MountPath
-  if mountPath == "" {
-    router = r
-  } else {
-    router = r.Group(mountPath)
+  var router gin.IRoutes = engine
+  if config.MountPath != "" {
+    router = engine.Group(config.MountPath)
   }
 
-  newApi := func (c *gin.Context) *utils.Response {
-    return utils.NewResponse(c, config.ApiKey)
+  auth.NewService(&config, db).Route(router)
+  blockStore := blocks.NewService(&config, rc)
+  blockStore.Route(router)
+  eventService, err := events.NewService(&config, rc)
+  if err != nil {
+    log.Panicf("Failed to connect to create event service: %s\n", err)
   }
-
-  blockStore := blocks.NewStore(config.Blocks, rc)
-
-  auth.SetupRoutes(router, newApi, config.Auth, db)
-  teams.SetupRoutes(router, newApi, db)
-  contests.SetupRoutes(router, newApi, db)
-  blocks.SetupRoutes(router, newApi, blockStore)
-  games.SetupRoutes(router, newApi, config.Game, blockStore, db, eventService)
-  chains.SetupRoutes(router, newApi, db)
-  eventService.SetupRoutes(router, newApi)
+  eventService.Route(router)
+  chains.NewService(&config, db).Route(router)
+  teams.NewService(&config, db).Route(router)
+  games.NewService(&config, eventService, blockStore, db)
+  contests.NewService(&config, db).Route(router)
 
   router.GET("/ping", func(c *gin.Context) {
     c.String(http.StatusOK, "pong")
@@ -164,6 +162,10 @@ func setupRouter(config Config) *gin.Engine {
     c.JSON(200, &res)
   })
 
+  /*router.GET("/CsrfToken", func(c *gin.Context) {
+    c.Data(200, "text/plain", []byte(csrf.GetToken(c)))
+  });*/
+
   router.GET("/CsrfToken.js", func(c *gin.Context) {
     /* Token is base64-encoded and thus safe to inject with %s. */
     token := csrf.GetToken(c)
@@ -172,16 +174,16 @@ func setupRouter(config Config) *gin.Engine {
   });
 
   router.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
+    resp := utils.NewResponse(c)
+    model := model.New(c, db)
     var err error
-    api := newApi(c)
     id, ok := auth.GetUserId(c)
-    if !ok { api.BadUser(); return }
-    m := model.New(c, db)
-    err = m.ViewUser(id)
-    if err != nil { api.Error(err); return }
-    err = m.ViewUserContests(id)
-    if err != nil { api.Error(err); return }
-    api.Send(m.Flat())
+    if !ok { resp.BadUser(); return }
+    err = model.ViewUser(id)
+    if err != nil { resp.Error(err); return }
+    err = model.ViewUserContests(id)
+    if err != nil { resp.Error(err); return }
+    resp.Send(model.Flat())
   })
 
 /*
@@ -207,36 +209,5 @@ func setupRouter(config Config) *gin.Engine {
   })
 */
 
-  return r
-}
-
-func main() {
-
-  color.NoColor = false
-
-  var err error
-  var configFile []byte
-  configFile, err = ioutil.ReadFile("config.yaml")
-  if err != nil { panic(err) }
-  var config Config
-  err = yaml.Unmarshal(configFile, &config)
-  if err != nil { panic(err) }
-  if config.Blocks.Path == "" {
-    // TODO
-  }
-  if config.Auth.FrontendOrigin == "" {
-    config.Auth.FrontendOrigin = config.FrontendOrigin
-  }
-  if config.Game.ApiKey == "" {
-    config.Game.ApiKey = config.ApiKey
-  }
-
-  /*
-  f, _ := os.Create("gin.log")
-  gin.DefaultWriter = io.MultiWriter(f)
-  gin.SetMode(gin.ReleaseMode)
-  */
-
-  r := setupRouter(config)
-  r.Run(config.Listen)
+  engine.Run(config.Listen)
 }
