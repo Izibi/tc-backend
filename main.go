@@ -27,6 +27,7 @@ import (
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/teams"
   "tezos-contests.izibi.com/backend/contests"
+  "tezos-contests.izibi.com/backend/chains"
   "tezos-contests.izibi.com/backend/games"
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/events"
@@ -137,6 +138,7 @@ func setupRouter(config Config) *gin.Engine {
   contests.SetupRoutes(router, newApi, db)
   blocks.SetupRoutes(router, newApi, blockStore)
   games.SetupRoutes(router, newApi, config.Game, blockStore, db, eventService)
+  chains.SetupRoutes(router, newApi, db)
   eventService.SetupRoutes(router, newApi)
 
   router.GET("/ping", func(c *gin.Context) {

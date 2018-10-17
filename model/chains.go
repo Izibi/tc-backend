@@ -4,12 +4,14 @@ package model
 import (
   "database/sql"
   "fmt"
+  "time"
+  "strconv"
   "github.com/go-errors/errors"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
 type Chain struct {
-  Id string
+  Id int64
   Created_at string
   Updated_at string
   Contest_id string
@@ -54,7 +56,7 @@ func (m *Model) ViewChains(userId string, contestId string, filters ChainFilters
   for rows.Next() {
     chain, err := m.loadChainRow(rows, BaseFacet)
     if err != nil { return err }
-    chainIds.Item(j.String(chain.Id))
+    chainIds.Item(j.String(exportChainId(chain.Id)))
     if chain.Owner_id.Valid {
       m.teams.Need(chain.Owner_id.String)
     }
@@ -64,6 +66,50 @@ func (m *Model) ViewChains(userId string, contestId string, filters ChainFilters
   return nil
 }
 
+func (m *Model) ForkChain(userId string, chainId string) (string, error) {
+  /*
+    The user must belong to a team in contest chain.contest_id.
+    TODO: quotas on number of private chains per team?
+  */
+  var err error
+  var chain Chain
+  err = m.dbMap.Get(&chain, chainId)
+  if err != nil { return "", err }
+  team, err := m.loadUserContestTeam(userId, chain.Contest_id, BaseFacet)
+  if err != nil { return "", err }
+  if team == nil { return "", errors.New("access denied") }
+  now := time.Now().Format(time.RFC3339)
+  newChain := &Chain{
+    Created_at: now,
+    Updated_at: now,
+    Contest_id: chain.Contest_id,
+    Owner_id: sql.NullString{team.Id, true},
+    Parent_id: sql.NullString{exportChainId(chain.Id), true},
+    Status_id: "1" /* private test */,
+    Title: fmt.Sprintf("forked from %s", chain.Title),
+    Description: chain.Description,
+    Interface_text: chain.Interface_text,
+    Implementation_text: chain.Implementation_text,
+    Protocol_hash: chain.Protocol_hash,
+    New_protocol_hash: chain.New_protocol_hash,
+    Started_at: sql.NullString{},
+    Game_key: "",
+    Nb_votes_reject: 0,
+    Nb_votes_unknown: 0,
+    Nb_votes_approve: 0,
+    Round: 0,
+  }
+  err = m.dbMap.Insert(newChain)
+  if err != nil { return "", errors.Wrap(err, 0) }
+  fmt.Printf("chain %v\n", newChain)
+  if newChain.Id == 0 {
+    return "", errors.New("insert failed")
+  }
+  /* TODO: post to the team's channel, an event indicating that a new chain
+     has been created */
+  return exportChainId(newChain.Id), nil
+}
+
 func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
   var res Chain
   err := row.StructScan(&res)
@@ -71,7 +117,7 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
     view := j.Object()
-    view.Prop("id", j.String(res.Id))
+    view.Prop("id", j.String(exportChainId(res.Id)))
     view.Prop("createdAt", j.String(res.Created_at))
     view.Prop("updatedAt", j.String(res.Updated_at))
     view.Prop("contestId", j.String(res.Contest_id))
@@ -101,7 +147,11 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
     view.Prop("nbVotesApprove", j.Int(res.Nb_votes_approve))
     view.Prop("nbVotesReject", j.Int(res.Nb_votes_reject))
     view.Prop("nbVotesUnknown", j.Int(res.Nb_votes_unknown))
-    m.Add(fmt.Sprintf("chains %s", res.Id), view)
+    m.Add(fmt.Sprintf("chains %s", exportChainId(res.Id)), view)
   }
   return &res, nil
+}
+
+func exportChainId(id int64) string {
+  return strconv.FormatInt(id, 10)
 }
