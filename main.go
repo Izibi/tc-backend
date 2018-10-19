@@ -126,18 +126,20 @@ func main() {
     router = engine.Group(config.MountPath)
   }
 
-  auth.NewService(&config, db).Route(router)
+  authService := auth.NewService(&config, db)
+  authService.Route(router)
   blockStore := blocks.NewService(&config, rc)
   blockStore.Route(router)
-  eventService, err := events.NewService(&config, rc)
+  eventService, err := events.NewService(&config, db, rc, authService)
   if err != nil {
     log.Panicf("Failed to connect to create event service: %s\n", err)
   }
+  go eventService.Run()
   eventService.Route(router)
-  chains.NewService(&config, db).Route(router)
-  teams.NewService(&config, db).Route(router)
-  games.NewService(&config, eventService, blockStore, db)
-  contests.NewService(&config, db).Route(router)
+  chains.NewService(&config, db, eventService, authService).Route(router)
+  teams.NewService(&config, db, authService).Route(router)
+  games.NewService(&config, db, eventService, blockStore).Route(router)
+  contests.NewService(&config, db, authService).Route(router)
 
   router.GET("/ping", func(c *gin.Context) {
     c.String(http.StatusOK, "pong")
@@ -177,7 +179,7 @@ func main() {
     resp := utils.NewResponse(c)
     model := model.New(c, db)
     var err error
-    id, ok := auth.GetUserId(c)
+    id, ok := authService.Wrap(c, model).GetUserId()
     if !ok { resp.BadUser(); return }
     err = model.ViewUser(id)
     if err != nil { resp.Error(err); return }

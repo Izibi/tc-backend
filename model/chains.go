@@ -5,7 +5,6 @@ import (
   "database/sql"
   "fmt"
   "time"
-  "strconv"
   "github.com/go-errors/errors"
   j "tezos-contests.izibi.com/backend/jase"
 )
@@ -14,10 +13,10 @@ type Chain struct {
   Id int64
   Created_at string
   Updated_at string
-  Contest_id string
-  Owner_id sql.NullString
+  Contest_id int64
+  Owner_id sql.NullInt64
   Parent_id sql.NullString
-  Status_id string
+  Status_id int64
   Title string
   Description string `db:"description_text"`
   Interface_text string
@@ -38,7 +37,7 @@ type ChainFilters struct {
   titleSearch string
 }
 
-func (m *Model) ViewChains(userId string, contestId string, filters ChainFilters) error {
+func (m *Model) ViewChains(userId int64, contestId int64, filters ChainFilters) error {
   /* Rely on ViewUserContest to perform access checking. */
   /* Load all contest teams?  or do that as a separate request? */
   err := m.ViewUserContest(userId, contestId)
@@ -56,9 +55,9 @@ func (m *Model) ViewChains(userId string, contestId string, filters ChainFilters
   for rows.Next() {
     chain, err := m.loadChainRow(rows, BaseFacet)
     if err != nil { return err }
-    chainIds.Item(j.String(exportChainId(chain.Id)))
+    chainIds.Item(j.String(m.ExportId(chain.Id)))
     if chain.Owner_id.Valid {
-      m.teams.Need(chain.Owner_id.String)
+      m.teams.Need(chain.Owner_id.Int64)
     }
   }
   m.teams.Load(m.loadTeams)
@@ -66,7 +65,7 @@ func (m *Model) ViewChains(userId string, contestId string, filters ChainFilters
   return nil
 }
 
-func (m *Model) ForkChain(userId string, chainId string) (string, error) {
+func (m *Model) ForkChain(userId int64, chainId int64) (int64, error) {
   /*
     The user must belong to a team in contest chain.contest_id.
     TODO: quotas on number of private chains per team?
@@ -74,18 +73,18 @@ func (m *Model) ForkChain(userId string, chainId string) (string, error) {
   var err error
   var chain Chain
   err = m.dbMap.Get(&chain, chainId)
-  if err != nil { return "", err }
-  team, err := m.loadUserContestTeam(userId, chain.Contest_id, BaseFacet)
-  if err != nil { return "", err }
-  if team == nil { return "", errors.New("access denied") }
+  if err != nil { return 0, err }
+  team, err := m.LoadUserContestTeam(userId, chain.Contest_id, BaseFacet)
+  if err != nil { return 0, err }
+  if team == nil { return 0, errors.New("access denied") }
   now := time.Now().Format(time.RFC3339)
   newChain := &Chain{
     Created_at: now,
     Updated_at: now,
     Contest_id: chain.Contest_id,
-    Owner_id: sql.NullString{team.Id, true},
-    Parent_id: sql.NullString{exportChainId(chain.Id), true},
-    Status_id: "1" /* private test */,
+    Owner_id: sql.NullInt64{team.Id, true},
+    Parent_id: sql.NullString{m.ExportId(chain.Id), true},
+    Status_id: 1 /* private test */,
     Title: fmt.Sprintf("forked from %s", chain.Title),
     Description: chain.Description,
     Interface_text: chain.Interface_text,
@@ -100,17 +99,16 @@ func (m *Model) ForkChain(userId string, chainId string) (string, error) {
     Round: 0,
   }
   err = m.dbMap.Insert(newChain)
-  if err != nil { return "", errors.Wrap(err, 0) }
-  fmt.Printf("chain %v\n", newChain)
+  if err != nil { return 0, errors.Wrap(err, 0) }
   if newChain.Id == 0 {
-    return "", errors.New("insert failed")
+    return 0, errors.New("insert failed")
   }
   /* TODO: post to the team's channel, an event indicating that a new chain
      has been created */
-  return exportChainId(newChain.Id), nil
+  return newChain.Id, nil
 }
 
-func (m *Model) DeleteChain(userId string, chainId string) (*Chain, error) {
+func (m *Model) DeleteChain(userId int64, chainId int64) (*Chain, error) {
   /*
     A private chain can be deleted by its team members.
   */
@@ -118,12 +116,12 @@ func (m *Model) DeleteChain(userId string, chainId string) (*Chain, error) {
   var chain Chain
   err = m.dbMap.Get(&chain, chainId)
   if err != nil { return nil, err }
-  team, err := m.loadUserContestTeam(userId, chain.Contest_id, BaseFacet)
+  team, err := m.LoadUserContestTeam(userId, chain.Contest_id, BaseFacet)
   if err != nil { return nil, err }
-  if team == nil || team.Id != chain.Owner_id.String {
+  if team == nil || team.Id != chain.Owner_id.Int64 {
     return nil, errors.New("access denied")
   }
-  if chain.Status_id != "1" { // FIXME hard-coded id in select id from chain_statuses where is_public = 0
+  if chain.Status_id != 1 { // FIXME hard-coded id in select id from chain_statuses where is_public = 0
     return nil, errors.New("forbidden")
   }
   _, err = m.db.Exec(`DELETE FROM chains WHERE id = ?`, chainId)
@@ -138,13 +136,13 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
     view := j.Object()
-    view.Prop("id", j.String(exportChainId(res.Id)))
+    view.Prop("id", j.String(m.ExportId(res.Id)))
     view.Prop("createdAt", j.String(res.Created_at))
     view.Prop("updatedAt", j.String(res.Updated_at))
-    view.Prop("contestId", j.String(res.Contest_id))
+    view.Prop("contestId", j.String(m.ExportId(res.Contest_id)))
     ownerId := j.Null
     if res.Owner_id.Valid {
-      ownerId = j.String(res.Owner_id.String)
+      ownerId = j.String(m.ExportId(res.Owner_id.Int64))
     }
     view.Prop("ownerId", ownerId)
     parentId := j.Null
@@ -152,7 +150,7 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
       parentId = j.String(res.Parent_id.String)
     }
     view.Prop("parentId", parentId)
-    view.Prop("statusId", j.String(res.Status_id))
+    view.Prop("statusId", j.String(m.ExportId(res.Status_id))) // XXX
     view.Prop("title", j.String(res.Title))
     view.Prop("description", j.String(res.Description))
     view.Prop("interfaceText", j.String(res.Interface_text))
@@ -169,11 +167,7 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
     view.Prop("nbVotesApprove", j.Int(res.Nb_votes_approve))
     view.Prop("nbVotesReject", j.Int(res.Nb_votes_reject))
     view.Prop("nbVotesUnknown", j.Int(res.Nb_votes_unknown))
-    m.Add(fmt.Sprintf("chains %s", exportChainId(res.Id)), view)
+    m.Add(fmt.Sprintf("chains %s", m.ExportId(res.Id)), view)
   }
   return &res, nil
-}
-
-func exportChainId(id int64) string {
-  return strconv.FormatInt(id, 10)
 }

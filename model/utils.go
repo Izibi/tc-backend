@@ -2,8 +2,9 @@
 package model
 
 import (
-  "time"
   "database/sql"
+  "strconv"
+  "time"
   "github.com/go-errors/errors"
   "github.com/go-sql-driver/mysql"
   j "tezos-contests.izibi.com/backend/jase"
@@ -34,4 +35,14 @@ func (m *Model) transaction(cb func () error) error {
     return errors.Wrap(err, 0)
   }
   return nil
+}
+
+func (m *Model) ImportId(id string) int64 {
+  n, err := strconv.ParseInt(id, 10, 64)
+  if err != nil { return 0 }
+  return n
+}
+
+func (m *Model) ExportId(id int64) string {
+  return strconv.FormatInt(id, 10)
 }

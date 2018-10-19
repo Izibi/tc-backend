@@ -46,23 +46,26 @@ func NewService(config *config.Config, db *sql.DB) *Service {
   return &Service{config, oauthConf, db}
 }
 
-func (svc *Service) Wrap(c *gin.Context) *Context {
+func (svc *Service) Wrap(c *gin.Context, m *model.Model) *Context {
+  if m == nil {
+    m = model.New(c, svc.db)
+  }
   return &Context{
     c,
     utils.NewResponse(c),
-    model.New(c, svc.db),
+    m,
   }
 }
 
 func (svc *Service) Route(r gin.IRoutes) {
 
   r.GET("/User", func (c *gin.Context) {
-    ctx := svc.Wrap(c)
+    ctx := svc.Wrap(c, nil)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
       userId := val.(string)
-      err := ctx.model.ViewUser(userId)
+      err := ctx.model.ViewUser(ctx.model.ImportId(userId))
       if err != nil { ctx.resp.Error(err); return }
     }
     ctx.resp.Send(ctx.model.Flat())
@@ -92,7 +95,7 @@ func (svc *Service) Route(r gin.IRoutes) {
   })
 
   r.GET("/LoginComplete", func (c *gin.Context) {
-    ctx := svc.Wrap(c)
+    ctx := svc.Wrap(c, nil)
 
     errStr := c.Query("error")
     if errStr != "" {
@@ -122,12 +125,12 @@ func (svc *Service) Route(r gin.IRoutes) {
     userId, err := ctx.model.ImportUserProfile(profile)
     if err != nil { c.AbortWithError(500, err); return }
 
-    session.Set("userId", userId)
+    session.Set("userId", ctx.model.ExportId(userId))
     session.Save()
 
     message := j.Object()
     message.Prop("type", j.String("login"))
-    message.Prop("userId", j.String(userId))
+    message.Prop("userId", j.String(ctx.model.ExportId(userId)))
     messageStr, err := j.ToString(message)
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{

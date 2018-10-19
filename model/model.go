@@ -16,6 +16,7 @@ type Model struct {
   db *sqlx.DB
   dbMap *modl.DbMap
   chainsTable *modl.TableMap
+  teamsTable *modl.TableMap
   result j.IObject
   entities map[string]j.Value
   tasks LoadSet
@@ -32,6 +33,7 @@ func New (ctx context.Context, db *sql.DB) *Model {
   model.db = sqlx.NewDb(db, "mysql")
   model.dbMap = modl.NewDbMap(db, modl.MySQLDialect{"InnoDB", "UTF8"})
   model.chainsTable = model.dbMap.AddTableWithName(Chain{}, "chains").SetKeys(true, "Id")
+  model.teamsTable = model.dbMap.AddTableWithName(Team{}, "teams").SetKeys(true, "Id")
   model.result = j.Object()
   model.entities = make(map[string]j.Value)
   return model

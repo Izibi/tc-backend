@@ -15,11 +15,11 @@ import (
 )
 
 type Game struct {
-  Id string
+  Id int64
   Game_key string
   Created_at time.Time
   Updated_at time.Time
-  Owner_id string
+  Owner_id int64
   First_block string
   Last_block string
   Started_at mysql.NullTime
@@ -31,9 +31,9 @@ type Game struct {
 }
 
 type GamePlayer struct {
-  Game_id string
+  Game_id int64
   Rank uint
-  Team_id string
+  Team_id int64
   Team_player uint
   Created_at time.Time
   Updated_at time.Time
@@ -50,7 +50,7 @@ type PlayerInput struct {
   Unused []byte
 }
 
-func (m *Model) CreateGame(ownerId string, firstBlock string) (string, error) {
+func (m *Model) CreateGame(ownerId int64, firstBlock string) (string, error) {
   var err error
   gameKey, err := generateKey()
   var nbCyclesPerRound = 2
@@ -160,7 +160,7 @@ func (m *Model) getGameId(gameKey string) (string, error) {
 }
 */
 
-func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (uint, error) {
+func (m *Model) getPlayerRank(gameId int64, teamId int64, teamPlayer uint) (uint, error) {
   row := m.db.QueryRow(
     `SELECT rank FROM game_players
       WHERE game_id = ? AND team_id = ? AND team_player = ? LIMIT 1`,
@@ -172,7 +172,7 @@ func (m *Model) getPlayerRank(gameId string, teamId string, teamPlayer uint) (ui
   return rank, nil
 }
 
-func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, commands []byte) error {
+func (m *Model) addPlayerToGame (gameId int64, teamId int64, teamPlayer uint, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands, used, unused)
@@ -184,7 +184,7 @@ func (m *Model) addPlayerToGame (gameId string, teamId string, teamPlayer uint, 
   return nil
 }
 
-func (m *Model) setPlayerCommands (gameId string, rank uint, commands []byte) error {
+func (m *Model) setPlayerCommands (gameId int64, rank uint, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `UPDATE game_players
@@ -195,7 +195,7 @@ func (m *Model) setPlayerCommands (gameId string, rank uint, commands []byte) er
   return nil
 }
 
-func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId string, f Facets) ([]GamePlayer, error) {
+func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId int64, f Facets) ([]GamePlayer, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT gp.* FROM game_players gp
@@ -214,7 +214,7 @@ func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId string, f Facets) 
   return items, nil
 }
 
-func (m *Model) getNextBlockCommands (gameId string, count uint) ([]byte, error) {
+func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT rank, commands FROM game_players gp WHERE game_id = ? ORDER BY rank`, gameId)
@@ -274,7 +274,7 @@ func preparePlayerInput(rank uint, commands []byte, count uint) (*PlayerInput, e
   }, nil
 }
 
-func (m *Model) lockGame (gameId string, commands []byte) error {
+func (m *Model) lockGame (gameId int64, commands []byte) error {
   res, err := m.db.Exec(
     `UPDATE games SET locked = 1, next_block_commands = ? WHERE id = ? AND locked = 0`,
       commands, gameId)
@@ -301,7 +301,7 @@ func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
   if err == sql.ErrNoRows { return nil, nil }
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
-    m.Add(fmt.Sprintf("games %s", res.Id), ViewGame(&res))
+    m.Add(fmt.Sprintf("games %s", m.ExportId(res.Id)), m.ViewGame(&res))
   }
   return &res, nil
 }
@@ -329,7 +329,7 @@ func generateKey() (string, error) {
   return base64.RawURLEncoding.EncodeToString(bs[:]), nil
 }
 
-func ViewGame(game *Game) j.Value {
+func (m *Model) ViewGame(game *Game) j.Value {
   if game == nil {
     return j.Null
   }
@@ -337,7 +337,7 @@ func ViewGame(game *Game) j.Value {
   view.Prop("key", j.String(game.Game_key))
   timeProp(view, "createdAt", game.Created_at)
   timeProp(view, "updatedAt", game.Updated_at)
-  view.Prop("ownerId", j.String(game.Owner_id))
+  view.Prop("ownerId", j.String(m.ExportId(game.Owner_id)))
   view.Prop("firstBlock", j.String(game.First_block))
   view.Prop("lastBlock", j.String(game.Last_block))
   nullTimeProp(view, "startedAt", game.Started_at)

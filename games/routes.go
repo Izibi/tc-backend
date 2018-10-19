@@ -28,7 +28,7 @@ type Context struct {
   model *model.Model
 }
 
-func NewService(config *config.Config, events *events.Service, store *blocks.Service, db *sql.DB) *Service {
+func NewService(config *config.Config, db *sql.DB, events *events.Service, store *blocks.Service) *Service {
   return &Service{config, events, store, db}
 }
 
@@ -58,13 +58,13 @@ func (svc *Service) Route(r gin.IRoutes) {
       return
     }
     ownerId, err := ctx.model.FindTeamIdByKey(req.Author[1:])
-    if ownerId == "" { ctx.resp.StringError("team key is not recognized"); return }
+    if ownerId == 0 { ctx.resp.StringError("team key is not recognized"); return }
     if err != nil { ctx.resp.Error(err); return }
     gameKey, err := ctx.model.CreateGame(ownerId, req.FirstBlock)
     if err != nil { ctx.resp.Error(err); return }
     game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
     if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Result(model.ViewGame(game))
+    ctx.resp.Result(ctx.model.ViewGame(game))
   })
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
@@ -79,7 +79,7 @@ func (svc *Service) Route(r gin.IRoutes) {
       return
     }
     result := j.Object()
-    result.Prop("game", model.ViewGame(game))
+    result.Prop("game", ctx.model.ViewGame(game))
     if game != nil {
       lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
       if err != nil { ctx.resp.Error(err); return }
@@ -99,7 +99,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
     if err != nil { ctx.resp.Error(err); return }
     result := j.Object()
-    result.Prop("game", model.ViewGame(game))
+    result.Prop("game", ctx.model.ViewGame(game))
     if game != nil {
       blocks, err := svc.store.GetPageIndex(game.Game_key, game.Last_block, page)
       if err != nil { ctx.resp.Error(err); return }
@@ -153,7 +153,7 @@ func (svc *Service) Route(r gin.IRoutes) {
       if err != nil { /* TODO: mark error in block */ return }
       err = ctx.model.EndRoundAndUnlock(gameKey, newBlock)
       if err != nil { /* TODO: mark error in block */ return }
-      svc.events.Publish(ctx.GameChannel(gameKey), ctx.NewBlockMessage(newBlock))
+      svc.events.PostGameMessage(gameKey, ctx.NewBlockMessage(newBlock))
     }()
     res := j.Object()
     res.Prop("commands", j.Raw(game.Next_block_commands))
@@ -169,18 +169,10 @@ func (svc *Service) Route(r gin.IRoutes) {
   })
 
   r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
-    err := svc.events.Publish(c.Param("gameKey"), "ping")
-    if err != nil {
-      c.JSON(500, gin.H{"error": err.Error()})
-      return
-    }
-    c.JSON(200, gin.H{"result": true})
+    svc.events.PostGameMessage(c.Param("gameKey"), "ping")
+    c.Status(204)
   })
 
-}
-
-func (c *Context) GameChannel(gameKey string) string {
-  return fmt.Sprintf("games/%s", gameKey)
 }
 
 func (c *Context) NewBlockMessage(hash string) string {

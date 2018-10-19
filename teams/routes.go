@@ -13,23 +13,27 @@ import (
 type Service struct {
   config *config.Config
   db *sql.DB
+  auth *auth.Service
 }
 
 type Context struct {
   c *gin.Context
   resp *utils.Response
   model *model.Model
+  auth *auth.Context
 }
 
-func NewService(config *config.Config, db *sql.DB) *Service {
-  return &Service{config, db}
+func NewService(config *config.Config, db *sql.DB, auth *auth.Service) *Service {
+  return &Service{config, db, auth}
 }
 
 func (svc *Service) Wrap(c *gin.Context) *Context {
+  m := model.New(c, svc.db)
   return &Context{
     c,
     utils.NewResponse(c),
-    model.New(c, svc.db),
+    m,
+    svc.auth.Wrap(c, m),
   }
 }
 
@@ -38,9 +42,9 @@ func (svc *Service) Route(r gin.IRoutes) {
   r.POST("/Teams/:teamId/Leave", func(c *gin.Context) {
     ctx := svc.Wrap(c)
     var err error
-    userId, ok := auth.GetUserId(c)
+    userId, ok := ctx.auth.GetUserId()
     if !ok { ctx.resp.BadUser(); return }
-    teamId := c.Param("teamId")
+    teamId := ctx.model.ImportId(c.Param("teamId"))
     err = ctx.model.LeaveTeam(teamId, userId)
     if err != nil { ctx.resp.Error(err); return }
     ctx.resp.Send(ctx.model.Flat())
@@ -49,9 +53,9 @@ func (svc *Service) Route(r gin.IRoutes) {
   r.POST("/Teams/:teamId/AccessCode", func(c *gin.Context) {
     ctx := svc.Wrap(c)
     var err error
-    userId, ok := auth.GetUserId(c)
+    userId, ok := ctx.auth.GetUserId()
     if !ok { ctx.resp.BadUser(); return }
-    teamId := c.Param("teamId")
+    teamId := ctx.model.ImportId(c.Param("teamId"))
     err = ctx.model.RenewTeamAccessCode(teamId, userId)
     if err != nil { ctx.resp.Error(err); return }
     ctx.resp.Send(ctx.model.Flat())
@@ -60,9 +64,9 @@ func (svc *Service) Route(r gin.IRoutes) {
   r.POST("/Teams/:teamId/Update", func(c *gin.Context) {
     ctx := svc.Wrap(c)
     var err error
-    userId, ok := auth.GetUserId(c)
+    userId, ok := ctx.auth.GetUserId()
     if !ok { ctx.resp.BadUser(); return }
-    teamId := c.Param("teamId")
+    teamId := ctx.model.ImportId(c.Param("teamId"))
     var arg model.UpdateTeamArg
     err = c.ShouldBindJSON(&arg)
     if err != nil { ctx.resp.Error(err); return }

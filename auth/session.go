@@ -2,16 +2,14 @@
 package auth
 
 import (
-  "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
 )
 
-func GetUserId(c *gin.Context) (id string, ok bool) {
-  session := sessions.Default(c)
+func (ctx *Context) GetUserId() (id int64, ok bool) {
+  session := sessions.Default(ctx.c)
   val := session.Get("userId")
   if val == nil {
-    return "", false
+    return 0, false
   }
-  return val.(string), true
+  return ctx.model.ImportId(val.(string)), true
 }
-

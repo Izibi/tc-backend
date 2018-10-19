@@ -151,9 +151,9 @@ func (svc *Service) buildPageIndex(parentHash string) ([]byte, error) {
 }
 
 func headIndexKey(gameKey string) string {
-  return fmt.Sprintf("%s:HEAD", gameKey)
+  return fmt.Sprintf("index:%s:HEAD", gameKey)
 }
 
 func pageIndexKey(gameKey string, page uint64) string {
-  return fmt.Sprintf("%s:%d", gameKey, page)
+  return fmt.Sprintf("index:%s:%d", gameKey, page)
 }
