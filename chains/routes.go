@@ -61,6 +61,14 @@ func (svc *Service) Route(r gin.IRoutes) {
     newChainId, err := ctx.model.ForkChain(team.Id, oldChainId)
     if err != nil { ctx.resp.Error(err); return }
 
+    /* Attempt to initialize a game on the new chain. */
+    newChain, err := ctx.model.LoadChain(newChainId, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
+    gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, oldChain.Protocol_hash)
+    if err == nil {
+      _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+    }
+
     /* XXX Temporary */
     message := fmt.Sprintf("chain %s created", ctx.model.ExportId(newChainId))
     svc.events.PostContestMessage(1, message)

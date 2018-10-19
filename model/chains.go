@@ -122,6 +122,14 @@ func (m *Model) DeleteChain(userId int64, chainId int64) (*Chain, error) {
   return &chain, nil
 }
 
+func (m *Model) SetChainGameKey(chainId int64, gameKey string) error {
+  var err error
+  _, err = m.db.Exec(
+    `UPDATE chains SET game_key = ? WHERE id = ?`, gameKey, chainId)
+  if err != nil { return err }
+  return nil
+}
+
 func (m *Model) LoadChain(chainId int64, f Facets) (*Chain, error) {
   return m.loadChainRow(m.db.QueryRowx(
     `SELECT * FROM chains WHERE id = ?`, chainId), f)
