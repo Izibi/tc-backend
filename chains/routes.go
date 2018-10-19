@@ -64,9 +64,12 @@ func (svc *Service) Route(r gin.IRoutes) {
     /* Attempt to initialize a game on the new chain. */
     newChain, err := ctx.model.LoadChain(newChainId, model.NullFacet)
     if err != nil { ctx.resp.Error(err); return }
-    gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, oldChain.Protocol_hash)
+    oldGame, err := ctx.model.LoadGame(oldChain.Game_key, model.NullFacet)
     if err == nil {
-      _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+      gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, oldGame.Last_block)
+      if err == nil {
+        _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+      }
     }
 
     /* XXX Temporary */
