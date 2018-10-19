@@ -47,15 +47,25 @@ func (svc *Service) Route(r gin.IRoutes) {
     ctx := svc.Wrap(c)
     userId, ok := ctx.auth.GetUserId()
     if !ok { ctx.resp.BadUser(); return }
-    chainId := ctx.model.ImportId(c.Param("chainId"))
-    id, err := ctx.model.ForkChain(userId, chainId)
+    oldChainId := ctx.model.ImportId(c.Param("chainId"))
+    oldChain, err := ctx.model.LoadChain(oldChainId, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
+    /*
+      The user must belong to a team in contest chain.contest_id.
+      TODO: quotas on number of private chains per team?
+    */
+    team, err := ctx.model.LoadUserContestTeam(userId, oldChain.Contest_id, model.NullFacet)
+    if err != nil { ctx.resp.Error(err); return }
+    if team == nil { ctx.resp.StringError("access denied"); return }
+
+    newChainId, err := ctx.model.ForkChain(team.Id, oldChainId)
     if err != nil { ctx.resp.Error(err); return }
 
     /* XXX Temporary */
-    message := fmt.Sprintf("chain %s created", ctx.model.ExportId(chainId))
+    message := fmt.Sprintf("chain %s created", ctx.model.ExportId(newChainId))
     svc.events.PostContestMessage(1, message)
 
-    ctx.resp.Result(j.String(ctx.model.ExportId(id)))
+    ctx.resp.Result(j.String(ctx.model.ExportId(newChainId)))
   })
 
   r.POST("/Chains/:chainId/Delete", func(c *gin.Context) {

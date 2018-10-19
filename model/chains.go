@@ -65,24 +65,17 @@ func (m *Model) ViewChains(userId int64, contestId int64, filters ChainFilters) 
   return nil
 }
 
-func (m *Model) ForkChain(userId int64, chainId int64) (int64, error) {
-  /*
-    The user must belong to a team in contest chain.contest_id.
-    TODO: quotas on number of private chains per team?
-  */
+func (m *Model) ForkChain(teamId int64, chainId int64) (int64, error) {
   var err error
   var chain Chain
   err = m.dbMap.Get(&chain, chainId)
   if err != nil { return 0, err }
-  team, err := m.LoadUserContestTeam(userId, chain.Contest_id, BaseFacet)
-  if err != nil { return 0, err }
-  if team == nil { return 0, errors.New("access denied") }
   now := time.Now().Format(time.RFC3339)
   newChain := &Chain{
     Created_at: now,
     Updated_at: now,
     Contest_id: chain.Contest_id,
-    Owner_id: sql.NullInt64{team.Id, true},
+    Owner_id: sql.NullInt64{teamId, true},
     Parent_id: sql.NullString{m.ExportId(chain.Id), true},
     Status_id: 1 /* private test */,
     Title: fmt.Sprintf("forked from %s", chain.Title),
@@ -127,6 +120,11 @@ func (m *Model) DeleteChain(userId int64, chainId int64) (*Chain, error) {
   _, err = m.db.Exec(`DELETE FROM chains WHERE id = ?`, chainId)
   if err != nil { return nil, errors.Wrap(err, 0) }
   return &chain, nil
+}
+
+func (m *Model) LoadChain(chainId int64, f Facets) (*Chain, error) {
+  return m.loadChainRow(m.db.QueryRowx(
+    `SELECT * FROM chains WHERE id = ?`, chainId), f)
 }
 
 func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
