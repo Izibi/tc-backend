@@ -62,8 +62,8 @@ func (m *Model) CreateTeam(userId int64, contestId int64, teamName string) error
   if err != nil { return err }
 
   res, err := m.db.Exec(
-    `INSERT INTO teams (access_code, contest_id, is_open, is_locked, name, public_key, channel_key)
-     VALUES (?, ?, 1, 0, ?, NULL)`, accessCode, contestId, teamName)
+    `INSERT INTO teams (access_code, contest_id, is_open, is_locked, name)
+     VALUES (?, ?, 1, 0, ?)`, accessCode, contestId, teamName)
   if err != nil {
     // TODO: retry a few times in case of access code conflict
     return errors.Wrap(err, 0)
