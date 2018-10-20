@@ -106,6 +106,12 @@ func (m *Model) ViewUser(userId int64) error {
   return nil
 }
 
+func (m *Model) IsUserAdmin(userId int64) bool {
+  user, err := m.loadUser(userId, NullFacet)
+  if err != nil { return false }
+  return user.Is_admin
+}
+
 func (m *Model) loadUser(userId int64, f Facets) (*User, error) {
   return m.loadUserRow(m.db.QueryRowx(
     `SELECT * FROM users WHERE id = ?`, userId), f)
