@@ -135,6 +135,11 @@ func (m *Model) LoadChain(chainId int64, f Facets) (*Chain, error) {
     `SELECT * FROM chains WHERE id = ?`, chainId), f)
 }
 
+func (m *Model) SaveChain(chain *Chain) error {
+  _, err := m.dbMap.Update(chain)
+  return err
+}
+
 func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
   var res Chain
   err := row.StructScan(&res)
