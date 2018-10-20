@@ -6,6 +6,9 @@ import (
 )
 
 func (ctx *Context) GetUserId() (id int64, ok bool) {
+  // XXX Disable in production!
+  userId := ctx.c.GetHeader("X-User-Id")
+  if userId != "" { return ctx.model.ImportId(userId), true }
   session := sessions.Default(ctx.c)
   val := session.Get("userId")
   if val == nil {
