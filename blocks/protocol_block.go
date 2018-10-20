@@ -69,3 +69,12 @@ func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (has
 
   return
 }
+
+func (svc *Service) LoadProtocol(hash string) (intf []byte, impl []byte, err error) {
+  blockPath := svc.blockDir(hash)
+  intf, err = ioutil.ReadFile(filepath.Join(blockPath, "bare_protocol.mli"))
+  if err != nil { return }
+  impl, err = ioutil.ReadFile(filepath.Join(blockPath, "bare_protocol.ml"))
+  if err != nil { return }
+  return
+}
