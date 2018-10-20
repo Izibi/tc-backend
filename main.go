@@ -136,7 +136,7 @@ func main() {
   }
   go eventService.Run()
   eventService.Route(router)
-  chains.NewService(&config, db, eventService, authService).Route(router)
+  chains.NewService(&config, db, eventService, authService, blockStore).Route(router)
   teams.NewService(&config, db, authService).Route(router)
   games.NewService(&config, db, eventService, blockStore).Route(router)
   contests.NewService(&config, db, authService).Route(router)
