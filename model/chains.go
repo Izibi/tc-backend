@@ -28,7 +28,6 @@ type Chain struct {
   Nb_votes_reject int
   Nb_votes_unknown int
   Nb_votes_approve int
-  Round int
 }
 
 type ChainFilters struct {
@@ -89,7 +88,6 @@ func (m *Model) ForkChain(teamId int64, chainId int64) (int64, error) {
     Nb_votes_reject: 0,
     Nb_votes_unknown: 0,
     Nb_votes_approve: 0,
-    Round: 0,
   }
   err = m.dbMap.Insert(newChain)
   if err != nil { return 0, errors.Wrap(err, 0) }
@@ -174,7 +172,6 @@ func (m *Model) loadChainRow(row IRow, f Facets) (*Chain, error) {
     }
     view.Prop("startedAt", startedAt)
     view.Prop("currentGameKey", j.String(res.Game_key))
-    view.Prop("currentRound", j.Int(res.Round))
     view.Prop("nbVotesApprove", j.Int(res.Nb_votes_approve))
     view.Prop("nbVotesReject", j.Int(res.Nb_votes_reject))
     view.Prop("nbVotesUnknown", j.Int(res.Nb_votes_unknown))

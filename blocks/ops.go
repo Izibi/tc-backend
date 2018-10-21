@@ -59,11 +59,16 @@ func (svc *Service) chainBlock(dst *BlockBase, kind string, parentHash string) e
       (*dst).Task = parentHash
       (*dst).Protocol = ""
       (*dst).Setup = ""
+      (*dst).Round = 0
     case "protocol":
       (*dst).Protocol = parentHash
       (*dst).Setup = ""
+      (*dst).Round = 0
     case "setup":
       (*dst).Setup = parentHash
+      (*dst).Round = 0
+    case "command":
+      (*dst).Round = parentBase.Round + 1
   }
   return nil
 }

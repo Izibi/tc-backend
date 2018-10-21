@@ -73,7 +73,7 @@ func (svc *Service) Route(r gin.IRoutes) {
       if err == nil {
         setupHash := block.Base().Setup
         if setupHash != "" {
-          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, setupHash)
+          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, setupHash, 0)
           if err == nil {
             _ = ctx.model.SetChainGameKey(newChainId, gameKey)
           }
@@ -149,7 +149,6 @@ func (svc *Service) Route(r gin.IRoutes) {
     chain.Interface_text = string(intf)
     chain.Implementation_text = string(impl)
     chain.Game_key = req.GameKey
-    chain.Round = -1  // XXX not used?
     chain.Parent_id = sql.NullString{}
     chain.Protocol_hash = protocolHash
     chain.New_protocol_hash = protocolHash

@@ -37,6 +37,10 @@ func Uint(u uint) Value {
   return Raw([]byte(strconv.FormatUint(uint64(u), 10)))
 }
 
+func Int64(i int64) Value {
+  return Raw([]byte(strconv.FormatInt(i, 10)))
+}
+
 func Uint64(u uint64) Value {
   return Raw([]byte(strconv.FormatUint(u, 10)))
 }

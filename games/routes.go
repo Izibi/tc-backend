@@ -53,14 +53,16 @@ func (svc *Service) Route(r gin.IRoutes) {
     err = ctx.req.Signed(&req)
     if err != nil { ctx.resp.Error(err); return }
     fmt.Printf("new game request %v\n", req)
-    if !svc.store.IsBlock(req.FirstBlock) {
+    var block blocks.Block
+    block, err = svc.store.ReadBlock(req.FirstBlock)
+    if err != nil {
       ctx.resp.StringError("bad first block")
       return
     }
     ownerId, err := ctx.model.FindTeamIdByKey(req.Author[1:])
     if ownerId == 0 { ctx.resp.StringError("team key is not recognized"); return }
     if err != nil { ctx.resp.Error(err); return }
-    gameKey, err := ctx.model.CreateGame(ownerId, req.FirstBlock)
+    gameKey, err := ctx.model.CreateGame(ownerId, req.FirstBlock, block.Base().Round)
     if err != nil { ctx.resp.Error(err); return }
     game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
     if err != nil { ctx.resp.Error(err); return }

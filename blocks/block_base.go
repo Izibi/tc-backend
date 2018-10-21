@@ -12,6 +12,7 @@ type BlockBase struct {
   Task string `json:"task"`
   Protocol string `json:"protocol"`
   Setup string `json:"setup"`
+  Round uint64 `json:"round"`
 }
 
 func (b *BlockBase) Base() *BlockBase {
@@ -32,5 +33,6 @@ func (b *BlockBase) marshalBase() j.IObject {
   if b.Setup != "" {
     res.Prop("setup", j.String(b.Setup))
   }
+  res.Prop("Round", j.Uint64(b.Round))
   return res
 }
