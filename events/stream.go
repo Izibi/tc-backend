@@ -98,12 +98,8 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
     /* Reload subscriptions */
     var subs []string
     ssKey := streamSubscriptionsKey(key)
-    nSubs := svc.redis.SCard(ssKey).Val()
-    if nSubs != 0 {
-      subs, err = svc.redis.SMembers(ssKey).Result()
-      if err != nil { return nil, false, errors.Wrap(err, 0) }
-      fmt.Printf("stream %s subscriptions %v\n", key, subs)
-    }
+    subs, err = svc.redis.SMembers(ssKey).Result()
+    if err != nil { return nil, false, errors.Wrap(err, 0) }
     /* Rebuild the stream object. */
     var lastId uint64
     st = &stream{
@@ -129,7 +125,6 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
   if verbose {
     hi1.Printf("+ %s\n", key)
   }
-  fmt.Printf("E\n")
   return st, true, nil
 }
 
@@ -174,8 +169,6 @@ func (svc *Service) getStream(key string) (*stream, error) {
    Not synchronized, call only from inside the http stream writer.
  */
 func (st *stream) Push(msg string) *SSEvent {
-
-  SuccessFmt.Printf("Push %d %d\n", st.recvId, st.lastId)
 
   st.lastId++
   now := time.Now()
