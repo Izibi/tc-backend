@@ -91,6 +91,7 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
     serverUrl, err = svc.redis.GetSet(sKey, svc.config.SelfUrl).Result()
     if err != nil { return nil, false, errors.Wrap(err, 0) }
     if serverUrl != svc.config.SelfUrl {
+      // TODO: tell serverUrl we are now controlling the stream
       fmt.Printf("stream %s transfered from %s\n", key)
     } else {
       fmt.Printf("stream %s reconnected\n", key)
