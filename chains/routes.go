@@ -71,11 +71,17 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err == nil {
       block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
       if err == nil {
-        setupHash := block.Base().Setup
-        if setupHash != "" {
-          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, setupHash, 0)
+        bb := block.Base()
+        var firstBlock string
+        if bb.Kind == "setup" {
+          firstBlock = oldGame.Last_block
+        } else if bb.Setup != "" {
+          firstBlock = bb.Setup
+        }
+        if firstBlock != "" {
+          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, firstBlock, 0)
           if err == nil {
-            _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+            err = ctx.model.SetChainGameKey(newChainId, gameKey)
           }
         }
       }
