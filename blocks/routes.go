@@ -61,16 +61,9 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     err = c.ShouldBindJSON(&body)
     if err != nil { ctx.resp.Error(err); return }
-    hash, output, err := svc.MakeProtocolBlock(c.Param("parentHash"),
+    hash, err := svc.MakeProtocolBlock(c.Param("parentHash"),
       []byte(body.Interface), []byte(body.Implementation))
-    if err != nil {
-      if output != nil {
-        ctx.resp.Send(output)
-      } else {
-        ctx.resp.Error(err)
-      }
-      return
-    }
+    if err != nil { ctx.resp.Error(err) }
     ctx.HashResponse(hash)
   })
 
@@ -82,15 +75,8 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     err = c.ShouldBindJSON(&body)
     if err != nil { ctx.resp.Error(err); return }
-    hash, output, err := svc.MakeSetupBlock(c.Param("parentHash"), body.Params)
-    if err != nil {
-      if output != nil {
-        ctx.resp.Send(output)
-      } else {
-        ctx.resp.Error(err)
-      }
-      return
-    }
+    hash, err := svc.MakeSetupBlock(c.Param("parentHash"), body.Params)
+    if err != nil { ctx.resp.Error(err) }
     ctx.HashResponse(hash)
   })
 

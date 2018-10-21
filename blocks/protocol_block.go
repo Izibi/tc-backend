@@ -28,9 +28,8 @@ func (b *ProtocolBlock) Marshal() j.IObject {
   return res
 }
 
-func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, output j.Value, err error) {
+func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, err error) {
 
-  output = nil
   block := ProtocolBlock{
     Interface: hashResource(intf),
     Implementation: hashResource(impl),
@@ -39,7 +38,7 @@ func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (has
   if err != nil { return }
   encodedBlock := block.Marshal()
   hash, err = svc.writeBlock(encodedBlock)
-  if os.IsExist(err) { return hash, nil, nil }
+  if os.IsExist(err) { return hash, nil }
   if err != nil { return }
   defer func () {
     if err != nil {

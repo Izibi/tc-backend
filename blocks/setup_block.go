@@ -21,7 +21,7 @@ func (b *SetupBlock) Marshal() j.IObject {
   return res
 }
 
-func (svc *Service) MakeSetupBlock(parentHash string, params []byte) (hash string, output j.Value, err error) {
+func (svc *Service) MakeSetupBlock(parentHash string, params []byte) (hash string, err error) {
 
   params, err = j.PrettyBytes(params)
   if err != nil { err = errors.Wrap(err, 0); return }
@@ -33,7 +33,7 @@ func (svc *Service) MakeSetupBlock(parentHash string, params []byte) (hash strin
   if err != nil { return }
   encodedBlock := block.Marshal()
   hash, err = svc.writeBlock(encodedBlock)
-  if os.IsExist(err) { return hash, nil, nil }
+  if os.IsExist(err) { return hash, nil }
   if err != nil { return }
   defer func () {
     if err != nil {
@@ -70,7 +70,6 @@ func (svc *Service) MakeSetupBlock(parentHash string, params []byte) (hash strin
       string(params), string(cmd.Stderr.Bytes()))
     return
   }
-  output = nil
 
   err = svc.finalizeBlock(hash, &block, &cmd.Stdout)
   if err != nil { return }
