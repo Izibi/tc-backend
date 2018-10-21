@@ -39,6 +39,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     var err error
     var body struct {
       Identifier string `json:"identifier"`
+      Revision uint64 `json:"revision"`
       /* Consider: move task "tools" and "helper" from config.yaml to here:
       Task_tools_cmd string `json:"task_tools_cmd"`
       Task_helper_cmd string `json:"task_helper_cmd"`
@@ -46,7 +47,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     err = c.ShouldBindJSON(&body)
     if err != nil { ctx.resp.Error(err); return }
-    hash, err := svc.MakeTaskBlock(c.Param("parentHash"), body.Identifier)
+    hash, err := svc.MakeTaskBlock(c.Param("parentHash"), body.Identifier, body.Revision)
     if err != nil { ctx.resp.Error(err); return }
     ctx.HashResponse(hash)
   })
@@ -60,9 +61,16 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     err = c.ShouldBindJSON(&body)
     if err != nil { ctx.resp.Error(err); return }
-    hash, err := svc.MakeProtocolBlock(c.Param("parentHash"),
+    hash, output, err := svc.MakeProtocolBlock(c.Param("parentHash"),
       []byte(body.Interface), []byte(body.Implementation))
-    if err != nil { ctx.resp.Error(err); return }
+    if err != nil {
+      if output != nil {
+        ctx.resp.Send(output)
+      } else {
+        ctx.resp.Error(err)
+      }
+      return
+    }
     ctx.HashResponse(hash)
   })
 
@@ -74,8 +82,15 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     err = c.ShouldBindJSON(&body)
     if err != nil { ctx.resp.Error(err); return }
-    hash, err := svc.MakeSetupBlock(c.Param("parentHash"), body.Params)
-    if err != nil { ctx.resp.Error(err); return }
+    hash, output, err := svc.MakeSetupBlock(c.Param("parentHash"), body.Params)
+    if err != nil {
+      if output != nil {
+        ctx.resp.Send(output)
+      } else {
+        ctx.resp.Error(err)
+      }
+      return
+    }
     ctx.HashResponse(hash)
   })
 

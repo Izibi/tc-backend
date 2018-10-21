@@ -2,11 +2,9 @@
 package blocks
 
 import (
-  "encoding/json"
   "io/ioutil"
   "os"
   "path/filepath"
-  "github.com/go-errors/errors"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -16,6 +14,13 @@ type ProtocolBlock struct {
   Implementation string `json:"implementation"`
 }
 
+type BuildProtocolOutput struct { // documentation
+  Error string `json:"error"`
+  Details string `json:"details"`
+  InterfaceLog string `json:"interface_log"`
+  ImplementationLog string `json:"implementation_log"`
+}
+
 func (b *ProtocolBlock) Marshal() j.IObject {
   res := b.marshalBase()
   res.Prop("interface", j.String(b.Interface))
@@ -23,8 +28,9 @@ func (b *ProtocolBlock) Marshal() j.IObject {
   return res
 }
 
-func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, err error) {
+func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (hash string, output j.Value, err error) {
 
+  output = nil
   block := ProtocolBlock{
     Interface: hashResource(intf),
     Implementation: hashResource(impl),
@@ -33,7 +39,7 @@ func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (has
   if err != nil { return }
   encodedBlock := block.Marshal()
   hash, err = svc.writeBlock(encodedBlock)
-  if os.IsExist(err) { return hash, nil }
+  if os.IsExist(err) { return hash, nil, nil }
   if err != nil { return }
   defer func () {
     if err != nil {
@@ -54,18 +60,6 @@ func (svc *Service) MakeProtocolBlock(parentHash string, intf, impl []byte) (has
     "build_protocol")
   err = cmd.Run(nil)
   if err != nil { return }
-
-  var output struct {
-    Error string `json:"error"`
-    Details string `json:"details"`
-    InterfaceLog string `json:"interface_log"`
-    ImplementationLog string `json:"implementation_log"`
-  }
-  err = json.Unmarshal(cmd.Stdout.Bytes(), &output)
-  if err != nil {
-    err = errors.Errorf("failed to parse output: %s\n%s", err, cmd.Stdout.Bytes())
-    return
-  }
 
   return
 }

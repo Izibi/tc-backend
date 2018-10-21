@@ -2,8 +2,8 @@
 package blocks
 
 import (
-  "fmt"
   "bytes"
+  "fmt"
   "io"
   "os/exec"
   "github.com/go-errors/errors"
