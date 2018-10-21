@@ -24,7 +24,6 @@ type Game struct {
   Last_block string
   Started_at mysql.NullTime
   Round_ends_at mysql.NullTime
-  Current_round uint
   Locked bool
   Next_block_commands []byte
   Nb_cycles_per_round uint
@@ -56,8 +55,8 @@ func (m *Model) CreateGame(ownerId int64, firstBlock string) (string, error) {
   var nbCyclesPerRound = 2
   if err != nil { return "", errors.Wrap(err, 0) }
   _, err = m.db.Exec(
-    `INSERT INTO games (game_key, owner_id, first_block, last_block, current_round, nb_cycles_per_round, next_block_commands)
-     VALUES (?, ?, ?, ?, 0, ?, "")`, gameKey, ownerId, firstBlock, firstBlock, nbCyclesPerRound)
+    `INSERT INTO games (game_key, owner_id, first_block, last_block, nb_cycles_per_round, next_block_commands)
+     VALUES (?, ?, ?, ?, ?, "")`, gameKey, ownerId, firstBlock, firstBlock, nbCyclesPerRound)
   if err != nil { return "", errors.Wrap(err, 0) }
   return gameKey, nil
 }
@@ -141,7 +140,6 @@ func (m *Model) EndRoundAndUnlock(gameKey string, newBlock string) error {
     _, err = m.db.Exec(
       `UPDATE games SET
         locked = 0,
-        current_round = current_round + 1,
         last_block = ?,
         next_block_commands = ""
        WHERE id = ?`, newBlock, game.Id)
@@ -342,7 +340,7 @@ func (m *Model) ViewGame(game *Game) j.Value {
   view.Prop("lastBlock", j.String(game.Last_block))
   nullTimeProp(view, "startedAt", game.Started_at)
   nullTimeProp(view, "roundEndsAt", game.Round_ends_at)
-  view.Prop("currentRound", j.Uint(game.Current_round))
   view.Prop("isLocked", j.Boolean(game.Locked))
+  view.Prop("nbCyclesPerRound", j.Uint(game.Nb_cycles_per_round))
   return view
 }
