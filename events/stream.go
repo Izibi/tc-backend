@@ -146,7 +146,10 @@ func (svc *Service) disconnectStream(st *stream) error {
 }
 
 func (svc *Service) refreshStream(st *stream) error {
-  err := svc.redis.Expire(streamKey(st.key), RedisStreamKeyExpiry).Err()
+  var err error
+  err = svc.redis.Expire(streamKey(st.key), RedisStreamKeyExpiry).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  err = svc.redis.Expire(streamSubscriptionsKey(st.key), RedisStreamKeyExpiry).Err()
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
