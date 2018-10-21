@@ -4,7 +4,10 @@ package games
 import (
   "fmt"
   "database/sql"
+  "io"
   "strconv"
+  "time"
+  "github.com/go-redis/redis"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/config"
@@ -19,6 +22,7 @@ type Service struct {
   events *events.Service
   store *blocks.Service
   db *sql.DB
+  rc *redis.Client
 }
 
 type Context struct {
@@ -28,8 +32,8 @@ type Context struct {
   model *model.Model
 }
 
-func NewService(config *config.Config, db *sql.DB, events *events.Service, store *blocks.Service) *Service {
-  return &Service{config, events, store, db}
+func NewService(config *config.Config, db *sql.DB, rc *redis.Client, events *events.Service, store *blocks.Service) *Service {
+  return &Service{config, events, store, db, rc}
 }
 
 func (svc *Service) Wrap(c *gin.Context) *Context {
@@ -184,7 +188,7 @@ func (svc *Service) Route(r gin.IRoutes) {
       if err != nil { /* TODO: mark error in block */ return }
       err = ctx.model.EndRoundAndUnlock(gameKey, newBlock)
       if err != nil { /* TODO: mark error in block */ return }
-      svc.events.PostGameMessage(gameKey, ctx.NewBlockMessage(newBlock))
+      svc.events.PostGameMessage(gameKey, newBlockMessage(newBlock))
     }()
     res := j.Object()
     res.Prop("commands", j.Raw(game.Next_block_commands))
@@ -200,12 +204,79 @@ func (svc *Service) Route(r gin.IRoutes) {
   })
 
   r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
-    svc.events.PostGameMessage(c.Param("gameKey"), "ping")
-    c.Status(204)
+    ctx := svc.Wrap(c)
+    var err error
+    var keys []string
+    keys, err = ctx.model.LoadGamePlayerTeamKeys(c.Param("gameKey"))
+    if err != nil { ctx.resp.Error(err); return }
+    key, err := utils.NewKey()
+    if err != nil { ctx.resp.Error(err); return }
+    sub := svc.rc.Subscribe(fmt.Sprintf("ping:%s", key))
+    svc.events.PostGameMessage(c.Param("gameKey"), newPingMessage(key))
+    timeout := time.NewTimer(1 * time.Second)
+    ch := sub.Channel()
+    responders := make(map[string]bool)
+    nbExpected := len(keys)
+    for _, key := range keys {
+      responders["@"+key] = false
+    }
+    c.Stream(func (w io.Writer) bool {
+      for {
+        select {
+        case <-timeout.C:
+          w.Write([]byte("timeout\n"))
+          sub.Close()
+          return false
+        case m := <-ch:
+          if m == nil {
+            w.Write([]byte("pubsub error\n"))
+            timeout.Stop()
+            sub.Close()
+            return false
+          }
+          identity := m.Payload
+          received, expected := responders[identity]
+          if !expected {
+            w.Write([]byte(fmt.Sprintf("unexpected %s\n", identity)))
+            return true
+          }
+          if received {
+            w.Write([]byte(fmt.Sprintf("duplicate %s\n", identity)))
+            return true
+          }
+          w.Write([]byte(fmt.Sprintf("received %s\n", identity)))
+          responders[m.Payload] = true
+          nbExpected -= 1
+          if nbExpected == 0 {
+            w.Write([]byte("OK\n"))
+            timeout.Stop()
+            sub.Close()
+            return false
+          }
+          return true
+        }
+      }
+    })
+  })
+
+  r.POST("/Games/:gameKey/Pong", func (c *gin.Context) {
+    ctx := svc.Wrap(c)
+    var req struct {
+      Author string `json:"author"`
+      Payload string `json:"payload"`
+    }
+    var err = ctx.req.Signed(&req)
+    if err != nil { ctx.resp.Error(err); return }
+    svc.rc.Publish(fmt.Sprintf("ping:%s", req.Payload), req.Author)
+    ctx.resp.Result(j.Boolean(true))
   })
 
 }
 
-func (c *Context) NewBlockMessage(hash string) string {
+func newPingMessage(payload string) string {
+  return fmt.Sprintf("ping %s", payload)
+}
+
+func newBlockMessage(hash string) string {
   return fmt.Sprintf("block %s", hash)
 }

@@ -261,6 +261,26 @@ func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId int64, f Facets) (
   return items, nil
 }
 
+func (m *Model) LoadGamePlayerTeamKeys(gameKey string) ([]string, error) {
+  var err error
+  rows, err := m.db.Queryx(
+    `SELECT DISTINCT t.public_key FROM teams t
+      INNER JOIN game_players gp ON gp.team_id = t.id
+      INNER JOIN games g ON g.id = gp.game_id
+      WHERE g.game_key = ?
+      ORDER BY t.public_key`, gameKey)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  defer rows.Close()
+  var items []string
+  for rows.Next() {
+    var key string
+    err = rows.Scan(&key)
+    if err != nil { return nil, err }
+    items = append(items, key)
+  }
+  return items, nil
+}
+
 func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) {
   var err error
   rows, err := m.db.Queryx(

@@ -138,7 +138,7 @@ func main() {
   eventService.Route(router)
   chains.NewService(&config, db, eventService, authService, blockStore).Route(router)
   teams.NewService(&config, db, authService).Route(router)
-  games.NewService(&config, db, eventService, blockStore).Route(router)
+  games.NewService(&config, db, rc, eventService, blockStore).Route(router)
   contests.NewService(&config, db, authService).Route(router)
 
   router.GET("/ping", func(c *gin.Context) {
