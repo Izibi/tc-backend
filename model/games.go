@@ -221,7 +221,7 @@ func (m *Model) getPlayerRank(gameId int64, teamId int64, teamPlayer uint32) (ui
   return rank, nil
 }
 
-func (m *Model) addPlayerToGame (gameId int64, player *RegisteredGamePlayer) error {
+func (m *Model) addPlayerToGame(gameId int64, player *RegisteredGamePlayer) error {
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands, used, unused)
@@ -231,7 +231,7 @@ func (m *Model) addPlayerToGame (gameId int64, player *RegisteredGamePlayer) err
   return nil
 }
 
-func (m *Model) setPlayerCommands (gameId int64, teamId int64, teamPlayer uint32, commands []byte) error {
+func (m *Model) setPlayerCommands(gameId int64, teamId int64, teamPlayer uint32, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `UPDATE game_players
@@ -242,7 +242,7 @@ func (m *Model) setPlayerCommands (gameId int64, teamId int64, teamPlayer uint32
   return nil
 }
 
-func (m *Model) loadPlayersOfGameTeam (gameKey string, teamId int64, f Facets) ([]GamePlayer, error) {
+func (m *Model) loadPlayersOfGameTeam(gameKey string, teamId int64, f Facets) ([]GamePlayer, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT gp.* FROM game_players gp
