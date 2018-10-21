@@ -73,6 +73,7 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, nbTeamPlayers 
     var game *Game
     game, err = m.LoadGame(gameKey, NullFacet)
     if err != nil { return err }
+    if game == nil { return errors.New("bad game key") }
     var ps []RegisteredGamePlayer
     ps, err = m.loadRegisteredGamePlayer(game.Id)
     var nextPlayer uint32 = 1
