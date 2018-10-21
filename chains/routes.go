@@ -69,9 +69,15 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { ctx.resp.Error(err); return }
     oldGame, err := ctx.model.LoadGame(oldChain.Game_key, model.NullFacet)
     if err == nil {
-      gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, oldGame.Last_block)
+      block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
       if err == nil {
-        _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+        setupHash := block.Base().Setup
+        if setupHash != "" {
+          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, setupHash)
+          if err == nil {
+            _ = ctx.model.SetChainGameKey(newChainId, gameKey)
+          }
+        }
       }
     }
 
