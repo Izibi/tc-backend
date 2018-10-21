@@ -7,6 +7,7 @@ import (
   "encoding/binary"
   "fmt"
   "strings"
+  "time"
   "github.com/go-errors/errors"
   "github.com/itchyny/base58-go"
   "github.com/jmoiron/sqlx"
@@ -17,6 +18,7 @@ type Team struct {
   Id int64
   Created_at string
   Updated_at string
+  Deleted_at sql.NullString
   Access_code string
   Contest_id int64
   Is_open bool
@@ -52,7 +54,7 @@ func (m *Model) CreateTeam(userId int64, contestId int64, teamName string) error
   teamName = strings.TrimSpace(teamName)
   if len(teamName) == 0 { return errors.Errorf("team name is too short") }
   row = m.db.QueryRowx(
-    `SELECT COUNT(t.id) FROM teams t WHERE t.contest_id = ? AND t.name = ?`,
+    `SELECT COUNT(t.id) FROM teams t WHERE t.contest_id = ? AND t.deleted_at IS NULL AND t.name = ?`,
      contestId, teamName)
   if err = row.Scan(&teamCount); err != nil { return errors.Wrap(err, 0) }
   if teamCount != 0 { return errors.Errorf("team name is not unique") }
@@ -94,7 +96,7 @@ func (m *Model) JoinTeam(userId int64, contestId int64, accessCode string) error
 
   /* Find the team based on the access code provided. */
   team, err := m.loadTeamRow(m.db.QueryRowx(
-    `SELECT * FROM teams WHERE contest_id = ? AND access_code = ?`,
+    `SELECT * FROM teams WHERE contest_id = ? AND access_code = ? AND deleted_at IS NULL`,
      contestId, accessCode), BaseFacet)
   if err != nil { return err }
   if team == nil { return errors.Errorf("bad access code") }
@@ -144,8 +146,8 @@ func (m *Model) LeaveTeam(teamId int64, userId int64) error {
   var newCreatorUserId int64
   err = row.Scan(&newCreatorUserId)
   if err == sql.ErrNoRows {
-    /* The team became empty, delete it. */
-    _, err = m.db.Exec(`DELETE FROM teams WHERE id = ?`, teamId)
+    /* The team became empty, mark it as deleted. */
+    _, err = m.db.Exec(`UPDATE teams SET deleted_at = ? WHERE id = ?`, time.Now(), teamId)
     if err != nil { return errors.Wrap(err, 0) }
     return nil
   }
@@ -215,7 +217,7 @@ func (m *Model) RenewTeamAccessCode(teamId int64, userId int64) error {
 }
 
 func (m *Model) FindTeamIdByKey(publicKey string) (int64, error) {
-  row := m.db.QueryRow(`SELECT id FROM teams WHERE public_key = ?`, publicKey)
+  row := m.db.QueryRow(`SELECT id FROM teams WHERE public_key = ? AND deleted_at IS NULL`, publicKey)
   var id int64
   err := row.Scan(&id)
   if err == sql.ErrNoRows { return 0, nil }
@@ -261,7 +263,7 @@ func generateAccessCode() (string, error) {
 
 func (m *Model) LoadTeam(teamId int64, f Facets) (*Team, error) {
   return m.loadTeamRow(m.db.QueryRowx(
-    `SELECT * FROM teams WHERE id = ?`, teamId), f)
+    `SELECT * FROM teams WHERE id = ? AND deleted_at IS NULL`, teamId), f)
 }
 
 func (m *Model) LoadUserContestTeam(userId int64, contestId int64, f Facets) (*Team, error) {
@@ -292,7 +294,10 @@ func (m *Model) loadTeamRow(row IRow, f Facets) (*Team, error) {
     view := j.Object()
     view.Prop("id", j.String(m.ExportId(res.Id)))
     view.Prop("createdAt", j.String(res.Created_at))
-    view.Prop("updatedAt", j.String(res.Created_at))
+    view.Prop("updatedAt", j.String(res.Updated_at))
+    if res.Deleted_at.Valid {
+      view.Prop("deletedAt", j.String(res.Deleted_at.String))
+    }
     view.Prop("contestId", j.String(m.ExportId(res.Contest_id)))
     view.Prop("isOpen", j.Boolean(res.Is_open))
     view.Prop("isLocked", j.Boolean(res.Is_locked))
