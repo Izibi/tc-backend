@@ -117,8 +117,22 @@ func (svc *Service) Route(router gin.IRoutes) {
           _, err = w.Write(encoder.Encode(event))
           if err != nil { cleanup(); return false }
           return true
+        case <-st.closeChan:
+          cleanup()
+          return false
       }
     })
+  })
+
+  router.POST("/Events/:key/Close", func (c *gin.Context) {
+    ctx := svc.Wrap(c)
+    st, err := svc.getStream(c.Param("key"))
+    if err != nil { ctx.resp.Error(err); return }
+    if st == nil { ctx.resp.StringError("not found"); return }
+    st.closeChan <- true
+    time.Sleep(100 * time.Millisecond)
+    err = svc.redis.Publish("system", "HELLO!").Err()
+    ctx.resp.Result(j.Boolean(true))
   })
 
   /*

@@ -25,6 +25,7 @@ type stream struct {
   teamId int64
   contestId int64
   recent []*SSEvent
+  closeChan chan bool
 }
 
 type SSEvent struct {
@@ -51,6 +52,7 @@ func (svc *Service) newStream() (*stream, error) {
     teamId: 0,
     contestId: 0,
     recent: nil,
+    closeChan: make(chan bool),
   }
   err = svc.redis.Set(streamKey(key), st.serverUrl, 5 * time.Minute).Err()
   if err != nil { return nil, err }
