@@ -74,6 +74,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     gameKey := c.Param("gameKey")
     game, err := ctx.model.LoadGame(gameKey, model.NullFacet)
     if err != nil { ctx.resp.Error(err); return }
+    if game == nil { ctx.resp.StringError("bad key"); return }
     /* The hash of the last block is a convenient ETag value. */
     etag := fmt.Sprintf("\"%s\"", game.Last_block)
     if c.GetHeader("If-None-Match") == etag {
