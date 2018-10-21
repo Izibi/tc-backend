@@ -2,16 +2,14 @@
 package model
 
 import (
-  "crypto/rand"
   "database/sql"
-  "encoding/binary"
   "fmt"
   "strings"
   "time"
   "github.com/go-errors/errors"
-  "github.com/itchyny/base58-go"
   "github.com/jmoiron/sqlx"
   j "tezos-contests.izibi.com/backend/jase"
+  "tezos-contests.izibi.com/backend/utils"
 )
 
 type Team struct {
@@ -60,7 +58,7 @@ func (m *Model) CreateTeam(userId int64, contestId int64, teamName string) error
   if teamCount != 0 { return errors.Errorf("team name is not unique") }
 
   /* Create the team. */
-  accessCode, err := generateAccessCode()
+  accessCode, err := utils.NewAccessCode()
   if err != nil { return err }
 
   res, err := m.db.Exec(
@@ -203,7 +201,7 @@ func (m *Model) RenewTeamAccessCode(teamId int64, userId int64) error {
   if err != nil { return err }
   if team.Is_locked { return errors.Errorf("team is locked") }
   /* Renew the access code. */
-  accessCode, err := generateAccessCode()
+  accessCode, err := utils.NewAccessCode()
   if err != nil { return err }
   _, err = m.db.Exec(
     `UPDATE teams SET access_code = ? WHERE id = ?`, accessCode, teamId)
@@ -248,17 +246,6 @@ func (m *Model) getTeamMembersCount(teamId int64) (int, error) {
   var count int
   if err := row.Scan(&count); err != nil { return 0, errors.Wrap(err, 0) }
   return count, nil
-}
-
-func generateAccessCode() (string, error) {
-  binCode := make([]byte, 64)
-  _, err := rand.Read(binCode)
-  if err != nil { return "", errors.Wrap(err, 0) }
-  intCode := binary.LittleEndian.Uint64(binCode)
-  strCode := fmt.Sprintf("%d", intCode)
-  accessCode, err := base58.BitcoinEncoding.Encode([]byte(strCode))
-  if err != nil { return "", errors.Wrap(err, 0) }
-  return string(accessCode), nil
 }
 
 func (m *Model) LoadTeam(teamId int64, f Facets) (*Team, error) {

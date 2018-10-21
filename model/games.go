@@ -2,9 +2,7 @@
 package model
 
 import (
-  "crypto/rand"
   "database/sql"
-  "encoding/base64"
   "encoding/json"
   "fmt"
   "time"
@@ -12,6 +10,7 @@ import (
   "github.com/go-errors/errors"
   ji "github.com/json-iterator/go"
   j "tezos-contests.izibi.com/backend/jase"
+  "tezos-contests.izibi.com/backend/utils"
 )
 
 type Game struct {
@@ -58,7 +57,7 @@ type PlayerInput struct {
 
 func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64) (string, error) {
   var err error
-  gameKey, err := generateKey()
+  gameKey, err := utils.NewKey()
   var nbCyclesPerRound = 2
   if err != nil { return "", errors.Wrap(err, 0) }
   _, err = m.db.Exec(
@@ -368,13 +367,6 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
     view.Prop("commands", j.Raw(res.Commands))
   }
   return &res, nil
-}
-
-func generateKey() (string, error) {
-  bs := make([]byte, 32, 32)
-  _, err := rand.Read(bs)
-  if err != nil { return "", err }
-  return base64.RawURLEncoding.EncodeToString(bs[:]), nil
 }
 
 func (m *Model) ViewGame(game *Game) j.Value {
