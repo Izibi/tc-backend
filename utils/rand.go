@@ -19,7 +19,7 @@ func NewState() (string, error) {
 }
 
 func NewKey() (string, error) {
-  bs := make([]byte, 32, 32)
+  bs := make([]byte, 24, 24)
   _, err := rand.Read(bs)
   if err != nil { return "", err }
   var num big.Int
