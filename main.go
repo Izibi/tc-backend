@@ -6,6 +6,8 @@ import (
   "database/sql"
   "fmt"
   "html/template"
+  "io"
+  "os"
   "io/ioutil"
   "log"
   "net/http"
@@ -80,11 +82,9 @@ func main() {
 
   apiVersion := semver.MustParse(config.ApiVersion)
 
-  /*
   f, _ := os.Create("gin.log")
   gin.DefaultWriter = io.MultiWriter(f)
-  gin.SetMode(gin.ReleaseMode)
-  */
+  // gin.SetMode(gin.ReleaseMode)
 
   // Disable Console Color
   // gin.DisableConsoleColor()

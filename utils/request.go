@@ -2,7 +2,7 @@
 package utils
 
 import (
-  "fmt"
+  //"fmt"
   "encoding/json"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/signing"
@@ -36,6 +36,8 @@ func (r *Request) Signed(req interface{}) error {
 }
 
 func (r *Request) logRequestBody(bs []byte) {
-  notice.Print("<- ") // XXX from response.go
-  fmt.Printf("%s\n", string(bs))
+  /*
+    notice.Print("<- ") // XXX from response.go
+    fmt.Printf("%s\n", string(bs))
+  */
 }
