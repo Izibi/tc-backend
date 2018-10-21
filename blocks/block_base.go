@@ -33,6 +33,6 @@ func (b *BlockBase) marshalBase() j.IObject {
   if b.Setup != "" {
     res.Prop("setup", j.String(b.Setup))
   }
-  res.Prop("Round", j.Uint64(b.Round))
+  res.Prop("round", j.Uint64(b.Round))
   return res
 }
