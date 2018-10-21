@@ -32,9 +32,9 @@ type Game struct {
 
 type GamePlayer struct {
   Game_id int64
-  Rank uint
+  Rank uint32
   Team_id int64
-  Team_player uint
+  Team_player uint32
   Created_at time.Time
   Updated_at time.Time
   Locked_at *time.Time
@@ -43,8 +43,14 @@ type GamePlayer struct {
   Unused []byte
 }
 
+type RegisteredGamePlayer struct {
+  Rank uint32
+  Team_id int64
+  Team_player uint32
+}
+
 type PlayerInput struct {
-  Rank uint
+  Rank uint32
   Commands []json.RawMessage
   Used []byte
   Unused []byte
@@ -62,22 +68,50 @@ func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64
   return gameKey, nil
 }
 
-func (m *Model) SetPlayerCommands(gameKey string, teamKey string, currentBlock string, teamPlayer uint, commands []byte) (err error) {
-  teamId, err := m.FindTeamIdByKey(teamKey)
-  if err != nil { return errors.New("team key is not recognized")}
+func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, nbTeamPlayers uint32) (ranks []uint32, err error) {
+  err = m.transaction(func () error {
+    var err error
+    var game *Game
+    game, err = m.LoadGame(gameKey, NullFacet)
+    if err != nil { return err }
+    var ps []RegisteredGamePlayer
+    ps, err = m.loadRegisteredGamePlayer(game.Id)
+    var nextPlayer uint32 = 1
+    for _, p := range ps {
+      fmt.Printf("Player %v\n", p)
+      if p.Team_id == teamId {
+        ranks = append(ranks, p.Rank)
+        nextPlayer += 1
+      }
+    }
+    var nextRank uint32 = uint32(len(ps)) + 1
+    for nextPlayer <= nbTeamPlayers {
+      p := RegisteredGamePlayer{
+        Rank: nextRank,
+        Team_id: teamId,
+        Team_player: nextPlayer,
+      }
+      err = m.addPlayerToGame(game.Id, &p)
+      if err != nil { return err }
+      nextRank += 1
+      nextPlayer += 1
+      ranks = append(ranks, p.Rank)
+    }
+    return nil
+  })
+  if err != nil { return nil, err }
+  return ranks, nil
+}
+
+func (m *Model) SetPlayerCommands(gameKey string, currentBlock string, teamId int64, teamPlayer uint32, commands []byte) (err error) {
   err = m.transaction(func () error {
     game, err := m.LoadGame(gameKey, NullFacet)
     if err != nil { return err }
     if game.Last_block != currentBlock {
       return errors.New("current block has changed")
     }
-    rank, err := m.getPlayerRank(game.Id, teamId, teamPlayer)
-    if err != nil { return err }
-    if rank == 0 {
-      return m.addPlayerToGame(game.Id, teamId, teamPlayer, commands)
-    } else {
-      return m.setPlayerCommands(game.Id, rank, commands)
-    }
+    fmt.Printf("setPlayerCommands %d %d %d\n", game.Id, teamId, teamPlayer)
+    return m.setPlayerCommands(game.Id, teamId, teamPlayer, commands)
   })
   return err
 }
@@ -160,37 +194,51 @@ func (m *Model) getGameId(gameKey string) (string, error) {
 }
 */
 
-func (m *Model) getPlayerRank(gameId int64, teamId int64, teamPlayer uint) (uint, error) {
+func (m *Model) loadRegisteredGamePlayer(gameId int64) ([]RegisteredGamePlayer, error) {
+  var err error
+  rows, err := m.db.Queryx(
+    `SELECT rank, team_id, team_player FROM game_players WHERE game_id = ? ORDER by rank`, gameId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  defer rows.Close()
+  var ps []RegisteredGamePlayer
+  for rows.Next() {
+    var p RegisteredGamePlayer
+    err = rows.StructScan(&p)
+    if err != nil { return nil, err }
+    ps = append(ps, p)
+  }
+  return ps, nil
+}
+
+func (m *Model) getPlayerRank(gameId int64, teamId int64, teamPlayer uint32) (uint32, error) {
   row := m.db.QueryRow(
     `SELECT rank FROM game_players
       WHERE game_id = ? AND team_id = ? AND team_player = ? LIMIT 1`,
       gameId, teamId, teamPlayer)
-  var rank uint
+  var rank uint32
   err := row.Scan(&rank)
   if err == sql.ErrNoRows { return 0, nil }
   if err != nil { return 0, err }
   return rank, nil
 }
 
-func (m *Model) addPlayerToGame (gameId int64, teamId int64, teamPlayer uint, commands []byte) error {
+func (m *Model) addPlayerToGame (gameId int64, player *RegisteredGamePlayer) error {
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands, used, unused)
-      SELECT ?, 1 + COUNT(rank), ?, ?, ?, "", ""
-      FROM game_players
-      WHERE game_id = ?`,
-    gameId, teamId, teamPlayer, commands, gameId)
+      VALUES (?, ?, ?, ?, "", "", "")`,
+    gameId, player.Rank, player.Team_id, player.Team_player)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
-func (m *Model) setPlayerCommands (gameId int64, rank uint, commands []byte) error {
+func (m *Model) setPlayerCommands (gameId int64, teamId int64, teamPlayer uint32, commands []byte) error {
   var err error
   _, err = m.db.Exec(
     `UPDATE game_players
       SET commands = ?
-      WHERE game_id = ? AND rank = ?`,
-    commands, gameId, rank)
+      WHERE game_id = ? AND team_id = ? AND team_player = ?`,
+    commands, gameId, teamId, teamPlayer)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
@@ -239,7 +287,7 @@ func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) 
     if err != nil { return nil, errors.Wrap(err, 0) }
     for i, cmd := range input.Commands {
       obj := j.Object()
-      obj.Prop("player", j.Uint(item.Rank))
+      obj.Prop("player", j.Uint32(item.Rank))
       obj.Prop("command", j.String(ji.Get(cmd, "text").ToString()))
       cycles[i].Item(obj)
     }
@@ -252,7 +300,7 @@ func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) 
   return res, nil
 }
 
-func preparePlayerInput(rank uint, commands []byte, count uint) (*PlayerInput, error) {
+func preparePlayerInput(rank uint32, commands []byte, count uint) (*PlayerInput, error) {
   var cmds []json.RawMessage
   err := json.Unmarshal([]byte(commands), &cmds)
   if err != nil { return nil, err }
@@ -313,8 +361,8 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
   if err != nil { return nil, errors.Wrap(err, 0) }
   if f.Base {
     view := j.Object()
-    view.Prop("rank", j.Uint(res.Rank))
-    view.Prop("teamPlayer", j.Uint(res.Team_player))
+    view.Prop("rank", j.Uint32(res.Rank))
+    view.Prop("teamPlayer", j.Uint32(res.Team_player))
     timeProp(view, "createdAt", res.Created_at)
     timeProp(view, "updatedAt", res.Updated_at)
     view.Prop("commands", j.Raw(res.Commands))

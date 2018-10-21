@@ -113,24 +113,52 @@ func (svc *Service) Route(r gin.IRoutes) {
     ctx.resp.Result(result)
   })
 
+  r.POST("/Games/:gameKey/Register", func (c *gin.Context) {
+    ctx := svc.Wrap(c)
+    var err error
+    var req struct {
+      Author string `json:"author"`
+      NbPlayers uint32 `json:"nbPlayers"`
+    }
+    err = ctx.req.Signed(&req)
+    if err != nil { ctx.resp.Error(err); return }
+    teamId, err := ctx.model.FindTeamIdByKey(req.Author[1:])
+    if err != nil { ctx.resp.Error(err); return }
+    if teamId == 0 { ctx.resp.StringError("team key is not recognized"); return }
+    gameKey := c.Param("gameKey")
+    var ranks []uint32
+    ranks, err = ctx.model.RegisterGamePlayers(gameKey, teamId, req.NbPlayers)
+    if err != nil { ctx.resp.Error(err); return }
+    res := j.Object()
+    jRanks := j.Array()
+    for _, n := range(ranks) {
+      jRanks.Item(j.Uint32(n))
+    }
+    res.Prop("ranks", jRanks)
+    ctx.resp.Result(res)
+  })
+
   r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
     ctx := svc.Wrap(c)
     var err error
     var req struct {
       Author string `json:"author"`
       CurrentBlock string `json:"current_block"`
-      Player uint `json:"player"`
+      Player uint32 `json:"player"`
       Commands string `json:"commands"`
     }
     err = ctx.req.Signed(&req)
     if err != nil { ctx.resp.Error(err); return }
+    teamId, err := ctx.model.FindTeamIdByKey(req.Author[1:])
+    if err != nil { ctx.resp.Error(err); return }
+    if teamId == 0 { ctx.resp.StringError("team key is not recognized"); return }
     block, err := svc.store.ReadBlock(req.CurrentBlock)
     if err != nil { ctx.resp.Error(err); return }
     cmds, err := svc.store.CheckCommands(block.Base(), req.Commands)
     if err != nil { ctx.resp.Error(err); return }
     gameKey := c.Param("gameKey")
     /* XXX pass raw commands to SetPlayerCommands */
-    err = ctx.model.SetPlayerCommands(gameKey, req.Author[1:], req.CurrentBlock, req.Player, cmds)
+    err = ctx.model.SetPlayerCommands(gameKey, req.CurrentBlock, teamId, req.Player, cmds)
     if err != nil { ctx.resp.Error(err); return }
     ctx.resp.Result(j.Raw(cmds))
   })
