@@ -7,7 +7,6 @@ import (
   "database/sql"
   "encoding/binary"
   "errors"
-  "fmt"
   "math/rand"
   "sync"
   "time"
@@ -126,8 +125,4 @@ func seededRng() (*rand.Rand, error) {
   err = binary.Read(bytes.NewBuffer(bs), binary.LittleEndian, &seed)
   if err != nil { return nil, err }
   return rand.New(rand.NewSource(seed)), nil
-}
-
-func streamKey(key string) string {
-  return fmt.Sprintf("stream:%s", key)
 }

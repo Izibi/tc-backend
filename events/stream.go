@@ -4,9 +4,9 @@ package events
 import (
   "fmt"
   "encoding/base64"
-  "errors"
   "strconv"
   "time"
+  "github.com/go-errors/errors"
   "github.com/go-redis/redis"
   "github.com/fatih/color"
 )
@@ -55,7 +55,7 @@ func (svc *Service) newStream() (*stream, error) {
     closeChan: make(chan bool),
   }
   err = svc.redis.Set(streamKey(key), st.serverUrl, 5 * time.Minute).Err()
-  if err != nil { return nil, err }
+  if err != nil { return nil, errors.Wrap(err, 0) }
   {
     svc.mutex.Lock()
     svc.idleStreams[key] = st
@@ -87,21 +87,31 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
   if !idleFound {
     /* Atomically mark ourselves as the stream controller in redis. */
     var serverUrl string
-    serverUrl, err = svc.redis.GetSet(streamKey(key), svc.config.SelfUrl).Result()
-    if err != nil { return nil, false, err }
+    sKey := streamKey(key)
+    serverUrl, err = svc.redis.GetSet(sKey, svc.config.SelfUrl).Result()
+    if err != nil { return nil, false, errors.Wrap(err, 0) }
     if serverUrl != svc.config.SelfUrl {
-      /* TODO: transfer state from serverUrl */
-      return nil, false, errors.New("not implemented")
+      fmt.Printf("stream %s transfered from %s\n", key)
+    } else {
+      fmt.Printf("stream %s reconnected\n", key)
     }
-    /* Client reconnecting to the same server. */
-    fmt.Printf("XXX transfer state from %s\n", serverUrl)
+    /* Reload subscriptions */
+    var subs []string
+    ssKey := streamSubscriptionsKey(key)
+    nSubs := svc.redis.SCard(ssKey).Val()
+    if nSubs != 0 {
+      subs, err = svc.redis.SMembers(ssKey).Result()
+      if err != nil { return nil, false, errors.Wrap(err, 0) }
+      fmt.Printf("stream %s subscriptions %v\n", key, subs)
+    }
+    /* Rebuild the stream object. */
     var lastId uint64
     st = &stream{
       svc: svc,
       key: key,
       idleSince: time.Now(),
       serverUrl: svc.config.SelfUrl,
-      pubSub: svc.redis.Subscribe("system"),
+      pubSub: svc.redis.Subscribe(append(subs, "system")...),
       lastId: lastId,
       recvId: 0,
       userId: 0,
@@ -119,6 +129,7 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
   if verbose {
     hi1.Printf("+ %s\n", key)
   }
+  fmt.Printf("E\n")
   return st, true, nil
 }
 
@@ -135,7 +146,9 @@ func (svc *Service) disconnectStream(st *stream) error {
 }
 
 func (svc *Service) refreshStream(st *stream) error {
-  return svc.redis.Expire(streamKey(st.key), RedisStreamKeyExpiry).Err()
+  err := svc.redis.Expire(streamKey(st.key), RedisStreamKeyExpiry).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  return nil
 }
 
 func (svc *Service) getStream(key string) (*stream, error) {
@@ -203,14 +216,26 @@ func (st *stream) Resend() *SSEvent {
 }
 
 func (st *stream) Subscribe(channels ...string) error {
-  err := st.pubSub.Subscribe(channels...)
-  if err != nil { return err }
+  var err error
+  skey := streamSubscriptionsKey(st.key)
+  err = st.svc.redis.SAdd(skey, stringsToAnys(channels)...).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  err = st.svc.redis.Expire(skey, RedisStreamKeyExpiry).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  err = st.pubSub.Subscribe(channels...)
+  if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
 func (st *stream) Unsubscribe(channels ...string) error {
-  err := st.pubSub.Unsubscribe(channels...)
-  if err != nil { return err }
+  var err error
+  skey := streamSubscriptionsKey(st.key)
+  err = st.svc.redis.SRem(skey, stringsToAnys(channels)...).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  err = st.svc.redis.Expire(skey, RedisStreamKeyExpiry).Err()
+  if err != nil { return errors.Wrap(err, 0) }
+  err = st.pubSub.Unsubscribe(channels...)
+  if err != nil { return errors.Wrap(err, 0) }
   return nil
 }
 
@@ -234,7 +259,23 @@ func (st *stream) SetTeamId(teamId int64) error {
     ch, err = st.svc.getTeamChannel(st.teamId)
     if err != nil { return err }
     err = st.pubSub.Subscribe(ch)
-    if err != nil { return err }
+    if err != nil { return errors.Wrap(err, 0) }
   }
   return nil
+}
+
+func stringsToAnys(strs []string) []interface{} {
+  var anys = make([]interface{}, len(strs))
+  for i, s := range strs {
+    anys[i] = s
+  }
+  return anys
+}
+
+func streamKey(key string) string {
+  return fmt.Sprintf("stream:%s", key)
+}
+
+func streamSubscriptionsKey(key string) string {
+  return fmt.Sprintf("stream:%s:subs", key)
 }
