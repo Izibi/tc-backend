@@ -28,7 +28,6 @@ func NewKey() (string, error) {
   return string(key), nil
 }
 
-
 func NewAccessCode() (string, error) {
   binCode := make([]byte, 8)
   _, err := rand.Read(binCode)
@@ -39,4 +38,3 @@ func NewAccessCode() (string, error) {
   if err != nil { return "", errors.Wrap(err, 0) }
   return string(accessCode), nil
 }
-
