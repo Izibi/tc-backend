@@ -33,7 +33,7 @@ type GamePlayer struct {
   Game_id int64
   Rank uint32
   Team_id int64
-  Team_player uint32
+  Team_player uint32 // TODO: rename Bot_id
   Created_at time.Time
   Updated_at time.Time
   Locked_at *time.Time
@@ -45,7 +45,7 @@ type GamePlayer struct {
 type RegisteredGamePlayer struct {
   Rank uint32
   Team_id int64
-  Team_player uint32
+  Team_player uint32 // TODO: rename Bot_id
 }
 
 type PlayerInput struct {
@@ -67,7 +67,7 @@ func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64
   return gameKey, nil
 }
 
-func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, nbTeamPlayers uint32) (ranks []uint32, err error) {
+func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint32) (ranks []uint32, err error) {
   err = m.transaction(func () error {
     var err error
     var game *Game
@@ -76,25 +76,22 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, nbTeamPlayers 
     if game == nil { return errors.New("bad game key") }
     var ps []RegisteredGamePlayer
     ps, err = m.loadRegisteredGamePlayer(game.Id)
-    var nextPlayer uint32 = 1
-    for _, p := range ps {
-      fmt.Printf("Player %v\n", p)
-      if p.Team_id == teamId {
-        ranks = append(ranks, p.Rank)
-        nextPlayer += 1
-      }
-    }
     var nextRank uint32 = uint32(len(ps)) + 1
-    for nextPlayer <= nbTeamPlayers {
+    bot_loop: for _, botId := range botIds {
+      for _, p := range ps {
+        if p.Team_id == teamId && botId == p.Team_player {
+          ranks = append(ranks, p.Rank)
+          continue bot_loop
+        }
+      }
       p := RegisteredGamePlayer{
         Rank: nextRank,
         Team_id: teamId,
-        Team_player: nextPlayer,
+        Team_player: botId,
       }
       err = m.addPlayerToGame(game.Id, &p)
       if err != nil { return err }
       nextRank += 1
-      nextPlayer += 1
       ranks = append(ranks, p.Rank)
     }
     return nil
@@ -226,7 +223,7 @@ func (m *Model) addPlayerToGame(gameId int64, player *RegisteredGamePlayer) erro
   var err error
   _, err = m.db.Exec(
     `INSERT INTO game_players (game_id, rank, team_id, team_player, commands, used, unused)
-      VALUES (?, ?, ?, ?, "", "", "")`,
+      VALUES (?, ?, ?, ?, "", "", "")`, /* team_player -> bot_id */
     gameId, player.Rank, player.Team_id, player.Team_player)
   if err != nil { return errors.Wrap(err, 0) }
   return nil
@@ -382,7 +379,8 @@ func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
   if f.Base {
     view := j.Object()
     view.Prop("rank", j.Uint32(res.Rank))
-    view.Prop("teamPlayer", j.Uint32(res.Team_player))
+    view.Prop("teamId", j.Int64(res.Team_id))
+    view.Prop("botId", j.Uint32(res.Team_player /* TODO res.Bot_id */))
     timeProp(view, "createdAt", res.Created_at)
     timeProp(view, "updatedAt", res.Updated_at)
     view.Prop("commands", j.Raw(res.Commands))

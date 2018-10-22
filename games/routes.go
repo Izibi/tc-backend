@@ -122,7 +122,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     var err error
     var req struct {
       Author string `json:"author"`
-      NbPlayers uint32 `json:"nbPlayers"`
+      Ids []uint32 `json:"ids"`
     }
     err = ctx.req.Signed(&req)
     if err != nil { ctx.resp.Error(err); return }
@@ -131,7 +131,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     if teamId == 0 { ctx.resp.StringError("team key is not recognized"); return }
     gameKey := c.Param("gameKey")
     var ranks []uint32
-    ranks, err = ctx.model.RegisterGamePlayers(gameKey, teamId, req.NbPlayers)
+    ranks, err = ctx.model.RegisterGamePlayers(gameKey, teamId, req.Ids)
     if err != nil { ctx.resp.Error(err); return }
     res := j.Object()
     jRanks := j.Array()
