@@ -25,8 +25,17 @@ type Game struct {
   Round_ends_at mysql.NullTime
   Locked bool
   Next_block_commands []byte
-  Nb_cycles_per_round uint
   Current_round uint64
+  Max_nb_rounds uint64
+  Max_nb_players uint32
+  Nb_cycles_per_round uint32
+}
+
+type GameParams struct {
+  First_round uint64 `json:"first_round"` // Current_round
+  Nb_rounds uint64 `json:"nb_rounds"` // Max_nb_rounds
+  Nb_players uint32 `json:"nb_players"` // Max_nb_players
+  Cycles_per_round uint32 `json:"cycles_per_round"` // Nb_cycles_per_round
 }
 
 type GamePlayer struct {
@@ -73,14 +82,28 @@ func (m *Model) loadGameForUpdate(key string) (*Game, error) {
   return &game, nil
 }
 
-func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64) (string, error) {
+func (m *Model) CreateGame(ownerId int64, firstBlock string, params GameParams) (string, error) {
   var err error
   gameKey, err := utils.NewKey()
-  var nbCyclesPerRound = 2
   if err != nil { return "", errors.Wrap(err, 0) }
-  _, err = m.db.Exec(
-    `INSERT INTO games (game_key, owner_id, first_block, last_block, current_round, nb_cycles_per_round, next_block_commands)
-     VALUES (?, ?, ?, ?, ?, ?, "")`, gameKey, ownerId, firstBlock, firstBlock, currentRound, nbCyclesPerRound)
+  now := time.Now()
+  game := Game{
+    Game_key: gameKey,
+    Created_at: now,
+    Updated_at: now,
+    Owner_id: ownerId,
+    First_block: firstBlock,
+    Last_block: firstBlock,
+    Started_at: mysql.NullTime{},
+    Round_ends_at: mysql.NullTime{},
+    Locked: false,
+    Next_block_commands: []byte{},
+    Current_round: params.First_round,
+    Max_nb_rounds: params.Nb_rounds,
+    Max_nb_players: params.Nb_players,
+    Nb_cycles_per_round: params.Cycles_per_round,
+  }
+  err = m.dbMap.Insert(&game)
   if err != nil { return "", errors.Wrap(err, 0) }
   return gameKey, nil
 }
@@ -266,7 +289,7 @@ func (m *Model) LoadGamePlayerTeamKeys(gameKey string) ([]string, error) {
   return items, nil
 }
 
-func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint) ([]byte, error) {
+func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint32) ([]byte, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT rank, commands FROM game_players gp
@@ -275,7 +298,7 @@ func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint) ([]byte, erro
   defer rows.Close()
   var commands = j.Array()
   var cycles = make([]j.IArray, nbCycles, nbCycles)
-  var i uint
+  var i uint32
   for i = 0; i < nbCycles; i++ {
     cycleCmds := j.Array()
     commands.Item(cycleCmds)
@@ -308,7 +331,7 @@ func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint) ([]byte, erro
   return res, nil
 }
 
-func preparePlayerInput(rank uint32, commands []byte, nbCycles uint) (*PlayerInput, error) {
+func preparePlayerInput(rank uint32, commands []byte, nbCycles uint32) (*PlayerInput, error) {
   var cmds []json.RawMessage
   err := json.Unmarshal([]byte(commands), &cmds)
   if err != nil { return nil, err }

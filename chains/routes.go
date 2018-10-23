@@ -76,7 +76,13 @@ func (svc *Service) Route(r gin.IRoutes) {
           firstBlock = bb.Setup
         }
         if firstBlock != "" {
-          gameKey, err := svc.model.CreateGame(newChain.Owner_id.Int64, firstBlock, 0)
+          gameParams := model.GameParams{
+            First_round: 0,
+            Nb_rounds: oldGame.Max_nb_rounds,
+            Nb_players: oldGame.Max_nb_players,
+            Cycles_per_round: oldGame.Nb_cycles_per_round,
+          }
+          gameKey, err := svc.model.CreateGame(newChain.Owner_id.Int64, firstBlock, gameParams)
           if err == nil {
             err = svc.model.SetChainGameKey(newChainId, gameKey)
           }

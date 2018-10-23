@@ -83,10 +83,16 @@ func (svc *Service) Route(r gin.IRoutes) {
     var req struct {
       Author string `json:"author"`
       FirstBlock string `json:"first_block"`
+      NbCyclesPerRound uint32 `json:"nb_cycles_per_round"`
+      Max_nb_rounds uint64 `json:"max_nb_rounds"`
+      Max_nb_players uint32 `json:"max_nb_players"`
       // TODO: add a nonce
     }
     r, err := svc.SignedRequest(c, &req)
     if err != nil { r.Error(err); return }
+    if req.NbCyclesPerRound == 0 {
+      req.NbCyclesPerRound = 10
+    }
     fmt.Printf("new game request %v\n", req)
     var block blocks.Block
     block, err = svc.store.ReadBlock(req.FirstBlock)
@@ -97,7 +103,13 @@ func (svc *Service) Route(r gin.IRoutes) {
     ownerId, err := svc.model.FindTeamIdByKey(req.Author[1:])
     if ownerId == 0 { r.StringError("team key is not recognized"); return }
     if err != nil { r.Error(err); return }
-    gameKey, err := svc.model.CreateGame(ownerId, req.FirstBlock, block.Base().Round)
+    gameParams := model.GameParams{
+      First_round: block.Base().Round,
+      Nb_rounds: req.Max_nb_rounds,
+      Nb_players: req.Max_nb_players,
+      Cycles_per_round: req.NbCyclesPerRound,
+    }
+    gameKey, err := svc.model.CreateGame(ownerId, req.FirstBlock, gameParams)
     if err != nil { r.Error(err); return }
     game, err := svc.model.LoadGame(gameKey)
     if err != nil { r.Error(err); return }
@@ -300,7 +312,7 @@ func ViewGame(game *model.Game) j.Value {
   }
   obj.Prop("isLocked", j.Boolean(game.Locked))
   obj.Prop("currentRound", j.Uint64(game.Current_round))
-  obj.Prop("nbCyclesPerRound", j.Uint(game.Nb_cycles_per_round))
+  obj.Prop("nbCyclesPerRound", j.Uint32(game.Nb_cycles_per_round))
   return obj
 }
 
