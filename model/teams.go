@@ -49,7 +49,7 @@ func (m *Model) LoadUserContestTeam(userId int64, contestId int64) (*Team, error
 
 func (m *Model) LoadContestTeams(contestId int64) ([]Team, error) {
   var teams []Team
-  err := m.dbMap.Select(&teams, `SELECT * FROM teams WHERE contest_id = ?`, contestId)
+  err := m.dbMap.Select(&teams, `SELECT * FROM teams WHERE contest_id = ? AND deleted_at IS NULL`, contestId)
   if err != nil { return nil, errors.Wrap(err, 0) }
   return teams, nil
 }
