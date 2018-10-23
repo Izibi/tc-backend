@@ -130,10 +130,13 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint3
       Team_id: teamId,
       Team_player: botId,
     }
-    err = m.addPlayerToGame(game.Id, &p)
-    if err != nil { return nil, err }
-    nextRank += 1
-    ranks = append(ranks, p.Rank)
+    if len(ps) < int(game.Max_nb_players) {
+      err = m.addPlayerToGame(game.Id, &p)
+      if err != nil { return nil, err }
+      nextRank += 1
+      ps = append(ps, p)
+      ranks = append(ranks, p.Rank)
+    }
   }
   return ranks, nil
 }
