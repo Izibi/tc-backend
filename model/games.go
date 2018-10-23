@@ -283,7 +283,7 @@ func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint) ([]byte, erro
   }
   for rows.Next() {
     var player GamePlayer
-    err := rows.Scan(&player)
+    err := rows.Scan(&player.Rank, &player.Commands)
     if err != nil { return nil, errors.Wrap(err, 0) }
     input, err := preparePlayerInput(player.Rank, player.Commands, nbCycles)
     if err != nil { return nil, err }
