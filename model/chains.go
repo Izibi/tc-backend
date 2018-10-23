@@ -3,7 +3,6 @@ package model
 
 import (
   "database/sql"
-  "fmt"
   "time"
   "github.com/go-errors/errors"
 )
@@ -70,7 +69,7 @@ func (m *Model) LoadContestChains(contestId int64, filters... interface{}) ([]Ch
   return chains, nil
 }
 
-func (m *Model) ForkChain(teamId int64, chainId int64) (int64, error) {
+func (m *Model) ForkChain(teamId int64, chainId int64, title string) (int64, error) {
   var err error
   var chain Chain
   err = m.dbMap.Get(&chain, chainId)
@@ -83,7 +82,7 @@ func (m *Model) ForkChain(teamId int64, chainId int64) (int64, error) {
     Owner_id: sql.NullInt64{teamId, true},
     Parent_id: sql.NullInt64{chain.Id, true},
     Status_id: 1 /* private test */,
-    Title: fmt.Sprintf("forked from %s", chain.Title),
+    Title: title,
     Description: chain.Description,
     Interface_text: chain.Interface_text,
     Implementation_text: chain.Implementation_text,

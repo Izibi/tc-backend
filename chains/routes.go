@@ -61,7 +61,15 @@ func (svc *Service) Route(r gin.IRoutes) {
   })
 
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
+    var err error
     r := utils.NewResponse(c)
+    type Request struct {
+      Title string `json:"title"`
+    }
+    var req Request
+    err = c.Bind(&req)
+    if err != nil { r.Error(err); return }
+
     userId, ok := auth.GetUserId(c)
     if !ok { r.BadUser(); return }
     oldChainId := view.ImportId(c.Param("chainId"))
@@ -75,7 +83,8 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     if team == nil { r.StringError("access denied"); return }
 
-    newChainId, err := svc.model.ForkChain(team.Id, oldChainId)
+    fmt.Printf("new title: %s\n", req.Title)
+    newChainId, err := svc.model.ForkChain(team.Id, oldChainId, req.Title)
     if err != nil { r.Error(err); return }
 
     /* Attempt to initialize a game on the new chain. */
