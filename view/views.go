@@ -85,6 +85,8 @@ type ChainFilters struct {
 }
 
 func (v *View) ViewChains(userId int64, contestId int64, filters ChainFilters) error {
+  v.userId = userId
+  v.contestId = contestId
   /* Rely on ViewUserContest to perform access checking. */
   /* Load all contest teams?  or do that as a separate request? */
 /*
@@ -93,7 +95,7 @@ func (v *View) ViewChains(userId int64, contestId int64, filters ChainFilters) e
   - teamId | null
   - text (chain title)
 */
-  chains, err := v.model.LoadContestChains(v.contestId /* filters */)
+  chains, err := v.model.LoadContestChains(contestId /* filters */)
   chainIds := j.Array()
   for i := range chains {
     chain := &chains[i]
