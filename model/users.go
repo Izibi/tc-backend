@@ -34,6 +34,15 @@ func (m *Model) LoadUser(id int64) (*User, error) {
   return &user, nil
 }
 
+func (m *Model) LoadUsersById(ids []int64) ([]User, error) {
+  var users []User
+  query, args, err := sqlx.In(`SELECT * FROM users WHERE id IN (?)`, ids)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  err = m.dbMap.Select(&users, query, args...)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return users, nil
+}
+
 func (m *Model) FindUserByForeignId(foreignId string) (int64, error) {
   var id int64
   err := m.db.QueryRow(`SELECT id FROM users WHERE foreign_id = ?`, foreignId).Scan(&id)

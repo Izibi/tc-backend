@@ -7,6 +7,16 @@ import (
   "tezos-contests.izibi.com/backend/model"
 )
 
+func (v *View) loadUsers(ids []int64) error {
+  users, err := v.model.LoadUsersById(ids)
+  if err != nil { return err }
+  for i := range users {
+    user := &users[i]
+    v.addUser(user)
+  }
+  return nil
+}
+
 func (v *View) loadTeams(ids []int64) error {
   teams, err := v.model.LoadTeamsById(ids)
   if err != nil { return err }
@@ -53,7 +63,9 @@ func (v *View) loadTeamMembers(ids []int64) error {
     ids := j.Array()
     for _, member := range members {
       ids.Item(j.String(v.addTeamMember(member)))
+      v.users.Need(member.User_id)
     }
+    v.users.Load(v.loadUsers)
     obj := j.Object()
     obj.Prop("memberIds", ids)
     v.Add(fmt.Sprintf("teams#members %s", ExportId(teamId)), obj)
