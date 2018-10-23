@@ -30,6 +30,19 @@ func NewService(config *config.Config, events *events.Service, model *model.Mode
 
 func (svc *Service) Route(r gin.IRoutes) {
 
+  r.GET("/Chains", func(c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Query("contestId"))
+    err := v.ViewChains(userId, contestId, view.ChainFilters{
+      Status: c.Query("status"),
+    })
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
+  })
+
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
     r := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)

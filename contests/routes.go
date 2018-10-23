@@ -84,15 +84,4 @@ func (svc *Service) Route(r gin.IRoutes) {
     r.Send(v.Flat())
   })
 
-  r.GET("/Contests/:contestId/Chains", func(c *gin.Context) {
-    r := utils.NewResponse(c)
-    v := view.New(svc.model)
-    userId, ok := auth.GetUserId(c)
-    if !ok { r.BadUser(); return }
-    contestId := view.ImportId(c.Param("contestId"))
-    err := v.ViewChains(userId, contestId, view.ChainFilters{})
-    if err != nil { r.Error(err); return }
-    r.Send(v.Flat())
-  })
-
 }

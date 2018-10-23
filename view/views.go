@@ -3,6 +3,7 @@ package view
 
 import (
   "github.com/go-errors/errors"
+  "tezos-contests.izibi.com/backend/model"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
@@ -87,15 +88,18 @@ type ChainFilters struct {
 func (v *View) ViewChains(userId int64, contestId int64, filters ChainFilters) error {
   v.userId = userId
   v.contestId = contestId
-  /* Rely on ViewUserContest to perform access checking. */
-  /* Load all contest teams?  or do that as a separate request? */
-/*
-  TODO: add support for filters:
-  - status
-  - teamId | null
-  - text (chain title)
-*/
-  chains, err := v.model.LoadContestChains(contestId /* filters */)
+  if v.teamId == 0 {
+    team, err := v.model.LoadUserContestTeam(userId, contestId)
+    if err != nil { return err }
+    v.teamId = team.Id
+  }
+  /*
+    TODO: add support for filters:
+    - teamId | null
+    - text (chain title)
+  */
+  chains, err := v.model.LoadContestChains(contestId,
+    model.ChainStatusFilter{Status: filters.Status, TeamId: v.teamId})
   chainIds := j.Array()
   for i := range chains {
     chain := &chains[i]

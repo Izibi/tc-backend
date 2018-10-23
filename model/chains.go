@@ -29,6 +29,11 @@ type Chain struct {
   Nb_votes_approve int
 }
 
+type ChainStatusFilter struct {
+  Status string
+  TeamId int64
+}
+
 func (m *Model) LoadChain(chainId int64) (*Chain, error) {
   var err error
   var chain Chain
@@ -37,10 +42,30 @@ func (m *Model) LoadChain(chainId int64) (*Chain, error) {
   return &chain, nil
 }
 
-func (m *Model) LoadContestChains(contestId int64) ([]Chain, error) {
+func (m *Model) LoadContestChains(contestId int64, filters... interface{}) ([]Chain, error) {
   var chains []Chain
-  err := m.dbMap.Select(&chains,
-    `SELECT * FROM chains WHERE contest_id = ?`, contestId)
+  query := `SELECT * FROM chains WHERE contest_id = ?`
+  args := []interface{}{contestId}
+  for _, f := range filters {
+    switch filter := f.(type) {
+    case ChainStatusFilter:
+      switch filter.Status {
+      case "main":
+        query = query + ` AND status_id = 4`
+      case "private_test":
+        query = query + ` AND status_id = 1 AND team_id = ?`
+        args = append(args, filter.TeamId)
+      case "public_test":
+        query = query + ` AND status_id = 2`
+      case "candidate":
+        query = query + ` AND status_id = 3`
+      case "past":
+        query = query + ` AND status_id = 5`
+      }
+    }
+  }
+  fmt.Printf("query %s %v", query, args)
+  err := m.dbMap.Select(&chains, query, args...)
   if err != nil { return nil, errors.Wrap(err, 0) }
   return chains, nil
 }
