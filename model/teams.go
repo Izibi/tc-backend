@@ -42,6 +42,7 @@ func (m *Model) LoadUserContestTeam(userId int64, contestId int64) (*Team, error
   err := m.dbMap.SelectOne(&team,
     `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
      WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId)
+  if err == sql.ErrNoRows { return nil, nil }
   if err != nil { return nil, errors.Wrap(err, 0) }
   return &team, nil
 }
