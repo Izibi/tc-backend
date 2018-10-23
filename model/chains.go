@@ -44,7 +44,7 @@ func (m *Model) LoadChain(chainId int64) (*Chain, error) {
 
 func (m *Model) LoadContestChains(contestId int64, filters... interface{}) ([]Chain, error) {
   var chains []Chain
-  query := `SELECT * FROM chains WHERE contest_id = ?`
+  query := `SELECT id,created_at,updated_at,started_at,status_id,owner_id,title,game_key,parent_id,protocol_hash,nb_votes_approve,nb_votes_reject,nb_votes_unknown,contest_id FROM chains WHERE contest_id = ?`
   args := []interface{}{contestId}
   for _, f := range filters {
     switch filter := f.(type) {
