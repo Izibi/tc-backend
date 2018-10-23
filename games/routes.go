@@ -52,7 +52,7 @@ func (svc *Service) Route(r gin.IRoutes) {
       return
     }
     result := j.Object()
-    result.Prop("game", view.ViewGame(game))
+    result.Prop("game", ViewGame(game))
     if game != nil {
       lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
       if err != nil { r.Error(err); return }
@@ -71,14 +71,12 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     game, err := svc.model.LoadGame(gameKey)
     if err != nil { r.Error(err); return }
+    if game == nil { c.AbortWithStatus(404); return }
+    blocks, err := svc.store.GetPageIndex(game.Game_key, game.Last_block, page)
+    if err != nil { r.Error(err); return }
     result := j.Object()
-    result.Prop("game", view.ViewGame(game))
-    if game != nil {
-      blocks, err := svc.store.GetPageIndex(game.Game_key, game.Last_block, page)
-      if err != nil { r.Error(err); return }
-      result.Prop("page", j.Uint64(page))
-      result.Prop("blocks", j.Raw(blocks))
-    }
+    result.Prop("page", j.Uint64(page))
+    result.Prop("blocks", j.Raw(blocks))
     c.Header("Cache-Control", "public, max-age=86400, immutable") // 1 day
     r.Result(result)
   })
@@ -105,7 +103,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     game, err := svc.model.LoadGame(gameKey)
     if err != nil { r.Error(err); return }
-    r.Result(view.ViewGame(game))
+    r.Result(ViewGame(game))
   })
 
   r.POST("/Games/:gameKey/Register", func (c *gin.Context) {
@@ -262,6 +260,41 @@ func (svc *Service) Route(r gin.IRoutes) {
     r.Result(j.Boolean(true))
   })
 
+}
+
+func ViewGame(game *model.Game) j.Value {
+  if game == nil {
+    return j.Null
+  }
+  obj := j.Object()
+  obj.Prop("key", j.String(game.Game_key))
+  obj.Prop("createdAt", j.Time(game.Created_at))
+  obj.Prop("updatedAt", j.Time(game.Updated_at))
+  obj.Prop("ownerId", j.String(view.ExportId(game.Owner_id)))
+  obj.Prop("firstBlock", j.String(game.First_block))
+  obj.Prop("lastBlock", j.String(game.Last_block))
+  if game.Started_at.Valid {
+    obj.Prop("startedAt", j.Time(game.Started_at.Time))
+  }
+  if game.Round_ends_at.Valid {
+    obj.Prop("roundEndsAt", j.Time(game.Round_ends_at.Time))
+  }
+  obj.Prop("isLocked", j.Boolean(game.Locked))
+  obj.Prop("currentRound", j.Uint64(game.Current_round))
+  obj.Prop("nbCyclesPerRound", j.Uint(game.Nb_cycles_per_round))
+  return obj
+}
+
+func ViewGamePlayer(player *model.GamePlayer) j.Value {
+  obj := j.Object()
+  obj.Prop("gameId", j.Int64(player.Game_id))
+  obj.Prop("rank", j.Uint32(player.Rank))
+  obj.Prop("teamId", j.Int64(player.Team_id))
+  obj.Prop("botId", j.Uint32(player.Team_player /* TODO res.Bot_id */))
+  obj.Prop("createdAt", j.Time(player.Created_at))
+  obj.Prop("updatedAt", j.Time(player.Updated_at))
+  obj.Prop("commands", j.Raw(player.Commands))
+  return obj
 }
 
 func newPingMessage(payload string) string {

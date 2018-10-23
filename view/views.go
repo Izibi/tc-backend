@@ -2,8 +2,8 @@
 package view
 
 import (
-  j "tezos-contests.izibi.com/backend/jase"
   "github.com/go-errors/errors"
+  j "tezos-contests.izibi.com/backend/jase"
 )
 
 func (v *View) ViewUser(userId int64) error {
@@ -46,12 +46,16 @@ func (v *View) ViewUserContest(userId int64, contestId int64) error {
 
   contest, err := v.model.LoadContest(v.contestId)
   if err != nil { return err }
+
   v.addContest(contest)
   v.tasks.Need(contest.Task_id)
   err = v.tasks.Load(v.loadTasks)
   if err != nil { return err }
   err = v.loadTaskResources(contest.Task_id)
   if err != nil { return err }
+
+  // TODO: LoadContestTeams
+
   return nil
 }
 
