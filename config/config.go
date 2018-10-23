@@ -13,6 +13,8 @@ type Config struct {
   ApiKey string `yaml:"api_key"`
   Auth AuthConfig `yaml:"auth"`
   Blocks BlocksConfig `yaml:"blocks"`
+  LogFile string `yaml:"log_file"`
+  Production bool `yaml:"production"`
 }
 
 type AuthConfig struct {
