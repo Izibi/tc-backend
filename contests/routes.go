@@ -90,9 +90,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     userId, ok := auth.GetUserId(c)
     if !ok { r.BadUser(); return }
     contestId := view.ImportId(c.Param("contestId"))
-    err := v.ViewUserContest(userId, contestId)
-    if err != nil { r.Error(err); return }
-    err = v.ViewChains(userId, contestId, view.ChainFilters{})
+    err := v.ViewChains(userId, contestId, view.ChainFilters{})
     if err != nil { r.Error(err); return }
     r.Send(v.Flat())
   })
