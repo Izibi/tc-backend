@@ -79,6 +79,8 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     err = svc.model.JoinTeam(userId, contestId, body.AccessCode)
     if err != nil { r.Error(err); return }
+    err = v.ViewUserContestTeam(userId, contestId)
+    if err != nil { r.Error(err); return }
     r.Send(v.Flat())
   })
 
