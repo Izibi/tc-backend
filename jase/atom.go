@@ -4,6 +4,7 @@ package jase
 import (
   "io"
   "strconv"
+  "time"
 )
 
 type atom struct {
@@ -51,4 +52,8 @@ func Int64(i int64) Value {
 
 func Uint64(u uint64) Value {
   return Raw([]byte(strconv.FormatUint(u, 10)))
+}
+
+func Time(t time.Time) Value {
+  return String(t.Format(time.RFC3339))
 }

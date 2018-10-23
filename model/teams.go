@@ -3,26 +3,24 @@ package model
 
 import (
   "database/sql"
-  "fmt"
   "strings"
   "time"
   "github.com/go-errors/errors"
   "github.com/jmoiron/sqlx"
-  j "tezos-contests.izibi.com/backend/jase"
   "tezos-contests.izibi.com/backend/utils"
 )
 
 type Team struct {
   Id int64
   Created_at string
-  Updated_at string
+  Updated_at time.Time
   Deleted_at sql.NullString
   Access_code string
   Contest_id int64
   Is_open bool
   Is_locked bool
   Name string
-  Public_key sql.NullString
+  Public_key string
 }
 
 type TeamMember struct {
@@ -30,6 +28,40 @@ type TeamMember struct {
   User_id int64
   Joined_at string
   Is_creator bool
+}
+
+func (m *Model) LoadTeam(teamId int64) (*Team, error) {
+  var team Team
+  err := m.dbMap.Get(&team, teamId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &team, nil
+}
+
+func (m *Model) LoadUserContestTeam(userId int64, contestId int64) (*Team, error) {
+  var team Team
+  err := m.dbMap.SelectOne(&team,
+    `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
+     WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &team, nil
+}
+
+func (m *Model) LoadTeamsById(ids []int64) ([]Team, error) {
+  var teams []Team
+  query, args, err := sqlx.In(`SELECT * FROM teams WHERE id IN (?)`, ids)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  err = m.dbMap.Select(&teams, query, args...)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return teams, nil
+}
+
+func (m *Model) LoadTeamMembersByTeamId(teamIds []int64) ([]TeamMember, error) {
+  var items []TeamMember
+  query, args, err := sqlx.In(`SELECT * FROM team_members WHERE team_id IN (?) ORDER BY team_id, joined_at`, teamIds)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  err = m.dbMap.Select(&items, query, args...)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return items, nil
 }
 
 func (m *Model) CreateTeam(userId int64, contestId int64, teamName string) error {
@@ -76,7 +108,7 @@ func (m *Model) CreateTeam(userId int64, contestId int64, teamName string) error
      VALUES (?, ?, NOW(), 1)`, teamId, userId)
   if err != nil { return errors.Wrap(err, 0) }
 
-  return m.ViewUserContestTeam(userId, contestId)
+  return nil
 }
 
 func (m *Model) JoinTeam(userId int64, contestId int64, accessCode string) error {
@@ -93,11 +125,12 @@ func (m *Model) JoinTeam(userId int64, contestId int64, accessCode string) error
   if !ok { return errors.Errorf("already in a team") }
 
   /* Find the team based on the access code provided. */
-  team, err := m.loadTeamRow(m.db.QueryRowx(
+  var team Team
+  m.dbMap.SelectOne(&team,
     `SELECT * FROM teams WHERE contest_id = ? AND access_code = ? AND deleted_at IS NULL`,
-     contestId, accessCode), BaseFacet)
+     contestId, accessCode)
+  if err == sql.ErrNoRows { return errors.Errorf("bad access code") }
   if err != nil { return err }
-  if team == nil { return errors.Errorf("bad access code") }
   if team.Is_locked { return errors.Errorf("team is locked") }
   if !team.Is_open { return errors.Errorf("team is closed") }
 
@@ -112,20 +145,21 @@ func (m *Model) JoinTeam(userId int64, contestId int64, accessCode string) error
      VALUES (?, ?, NOW(), 0)`, team.Id, userId)
   if err != nil { return errors.Wrap(err, 0) }
 
-  return m.ViewUserContestTeam(userId, contestId)
+  return nil
 }
 
 func (m *Model) LeaveTeam(teamId int64, userId int64) error {
   /* Load the team and verify it is not locked. */
-  team, err := m.LoadTeam(teamId, NullFacet)
+  team, err := m.LoadTeam(teamId)
   if err != nil { return err }
   if team.Is_locked { return errors.Errorf("team is locked") }
 
   /* Load team_member row to determine if the creator is leaving the team. */
-  member, err := m.loadTeamMemberRow(m.db.QueryRowx(
-    `SELECT * FROM team_members WHERE user_id = ? and team_id = ?`, userId, teamId), NullFacet)
+  var member TeamMember
+  err = m.dbMap.SelectOne(&member,
+    `SELECT * FROM team_members WHERE user_id = ? and team_id = ?`, userId, teamId)
+  if err == sql.ErrNoRows { return nil }
   if err != nil { return err }
-  if member == nil { return nil }
 
   /* Remove the member from the team. */
   _, err = m.db.Exec(`DELETE FROM team_members WHERE team_id = ? AND user_id = ?`, teamId, userId)
@@ -165,53 +199,55 @@ type UpdateTeamArg struct {
   IsOpen *bool `json:"isOpen"`
   PublicKey *string `json:"publicKey"`
 }
-func (m *Model) UpdateTeam(teamId int64, userId int64, arg UpdateTeamArg) error {
+func (m *Model) UpdateTeam(teamId int64, userId int64, arg UpdateTeamArg) (*Team, error) {
 
   /* Verify the user making the request is in the team. */
   isMember, err := m.IsUserInTeam(userId, teamId)
-  if err != nil { return err }
-  if !isMember { return nil }
+  if err != nil { return nil, err }
+  if !isMember { return nil, errors.Errorf("forbidden") }
 
   /* Load the team and verify it is not locked. */
-  team, err := m.LoadTeam(teamId, NullFacet)
-  if err != nil { return err }
-  if team.Is_locked { return errors.Errorf("team is locked") }
+  team, err := m.LoadTeam(teamId)
+  if err != nil { return nil, err }
+  if team.Is_locked { return nil, errors.Errorf("team is locked") }
 
-  if arg.IsOpen != nil {
-    _, err = m.db.Exec(
-      `UPDATE teams SET is_open = ? WHERE id = ?`, *arg.IsOpen, teamId)
-    if err != nil { return errors.Wrap(err, 0) }
+  save := false
+  if arg.IsOpen != nil && *arg.IsOpen != team.Is_open {
+    save = true
+    team.Is_open = *arg.IsOpen
   }
-  if arg.PublicKey != nil {
-    _, err = m.db.Exec(
-      `UPDATE teams SET public_key = ? WHERE id = ?`, *arg.PublicKey, teamId)
-    if err != nil { return errors.Wrap(err, 0) }
+  if arg.PublicKey != nil && *arg.PublicKey != team.Public_key {
+    save = true
+    team.Public_key = *arg.PublicKey
+  }
+  if save {
+    team.Updated_at = time.Now()
+    m.dbMap.Update(team)
   }
 
-  return m.ViewUserContestTeam(userId, team.Contest_id)
+  return team, nil
 }
 
-func (m *Model) RenewTeamAccessCode(teamId int64, userId int64) error {
+func (m *Model) RenewTeamAccessCode(teamId int64, userId int64) (*Team, error) {
   /* Verify the user making the request is in the team. */
   isMember, err := m.IsUserInTeam(userId, teamId)
-  if err != nil { return err }
-  if !isMember { return nil }
+  if err != nil { return nil, err }
+  if !isMember { return nil, errors.Errorf("forbidden") }
   /* Load the team and verify it is not locked. */
-  team, err := m.LoadTeam(teamId, NullFacet)
-  if err != nil { return err }
-  if team.Is_locked { return errors.Errorf("team is locked") }
+  team, err := m.LoadTeam(teamId)
+  if err != nil { return nil, err }
+  if team.Is_locked { return nil, errors.Errorf("team is locked") }
   /* Renew the access code. */
   accessCode, err := utils.NewAccessCode()
-  if err != nil { return err }
+  if err != nil { return nil, err }
   _, err = m.db.Exec(
     `UPDATE teams SET access_code = ? WHERE id = ?`, accessCode, teamId)
   if err != nil {
     // TODO: retry a few times in case of access code conflict
-    return errors.Wrap(err, 0)
+    return nil, errors.Wrap(err, 0)
   }
-  /* Send back the updated team. */
-  _, err = m.LoadTeam(teamId, Facets{Base: true, Member: isMember})
-  return err
+  team.Access_code = accessCode
+  return team, nil
 }
 
 func (m *Model) FindTeamIdByKey(publicKey string) (int64, error) {
@@ -246,93 +282,4 @@ func (m *Model) getTeamMembersCount(teamId int64) (int, error) {
   var count int
   if err := row.Scan(&count); err != nil { return 0, errors.Wrap(err, 0) }
   return count, nil
-}
-
-func (m *Model) LoadTeam(teamId int64, f Facets) (*Team, error) {
-  return m.loadTeamRow(m.db.QueryRowx(
-    `SELECT * FROM teams WHERE id = ? AND deleted_at IS NULL`, teamId), f)
-}
-
-func (m *Model) LoadUserContestTeam(userId int64, contestId int64, f Facets) (*Team, error) {
-  return m.loadTeamRow(m.db.QueryRowx(
-    `SELECT t.* FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id
-     WHERE t.contest_id = ? AND tm.user_id = ? LIMIT 1`, contestId, userId), f)
-}
-
-func (m *Model) loadTeams(ids []int64) error {
-  query, args, err := sqlx.In(`SELECT * FROM teams WHERE id IN (?)`, ids)
-  if err != nil { return errors.Wrap(err, 0) }
-  rows, err := m.db.Queryx(query, args...)
-  if err != nil { return errors.Wrap(err, 0) }
-  defer rows.Close()
-  for rows.Next() {
-    _, err = m.loadTeamRow(rows, BaseFacet)
-    if err != nil { return err }
-  }
-  return nil
-}
-
-func (m *Model) loadTeamRow(row IRow, f Facets) (*Team, error) {
-  var res Team
-  err := row.StructScan(&res)
-  if err == sql.ErrNoRows { return nil, nil }
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  if f.Base {
-    view := j.Object()
-    view.Prop("id", j.String(m.ExportId(res.Id)))
-    view.Prop("createdAt", j.String(res.Created_at))
-    view.Prop("updatedAt", j.String(res.Updated_at))
-    if res.Deleted_at.Valid {
-      view.Prop("deletedAt", j.String(res.Deleted_at.String))
-    }
-    view.Prop("contestId", j.String(m.ExportId(res.Contest_id)))
-    view.Prop("isOpen", j.Boolean(res.Is_open))
-    view.Prop("isLocked", j.Boolean(res.Is_locked))
-    view.Prop("name", j.String(res.Name))
-    publicKey := j.Null
-    if res.Public_key.Valid {
-      publicKey = j.String(res.Public_key.String)
-    }
-    view.Prop("publicKey", publicKey)
-    m.Add(fmt.Sprintf("teams %s", m.ExportId(res.Id)), view)
-  }
-  if f.Member {
-    view := j.Object()
-    view.Prop("accessCode", j.String(res.Access_code))
-    m.Add(fmt.Sprintf("teams#member %s", m.ExportId(res.Id)), view)
-  }
-  return &res, nil
-}
-
-func (m *Model) loadTeamMembers(teamId int64, f Facets) ([]TeamMember, error) {
-  rows, err := m.db.Queryx(
-    `SELECT * FROM team_members WHERE team_id = ? ORDER BY joined_at`, teamId)
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  defer rows.Close()
-  var members []TeamMember
-  for rows.Next() {
-    member, err := m.loadTeamMemberRow(rows, f)
-    if err != nil { return nil, err }
-    members = append(members, *member)
-    m.users.Need(member.User_id)
-  }
-  err = m.users.Load(m.loadUsers)
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  return members, nil
-}
-
-func (m *Model) loadTeamMemberRow(row IRow, f Facets) (*TeamMember, error) {
-  var res TeamMember
-  err := row.StructScan(&res)
-  if err == sql.ErrNoRows { return nil, nil }
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  if f.Base {
-    view := j.Object()
-    view.Prop("teamId", j.String(m.ExportId(res.Team_id)))
-    view.Prop("userId", j.String(m.ExportId(res.User_id)))
-    view.Prop("joinedAt", j.String(res.Joined_at))
-    view.Prop("isCreator", j.Boolean(res.Is_creator))
-    m.Add(fmt.Sprintf("teamMembers %s.%s", m.ExportId(res.Team_id), m.ExportId(res.User_id)), view)
-  }
-  return &res, nil
 }

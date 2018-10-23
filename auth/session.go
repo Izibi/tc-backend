@@ -2,17 +2,21 @@
 package auth
 
 import (
+  "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
+  "tezos-contests.izibi.com/backend/view"
 )
 
-func (ctx *Context) GetUserId() (id int64, ok bool) {
+func GetUserId(c *gin.Context) (userId int64, ok bool) {
+
   // XXX Disable in production!
-  userId := ctx.c.GetHeader("X-User-Id")
-  if userId != "" { return ctx.model.ImportId(userId), true }
-  session := sessions.Default(ctx.c)
+  xUserId := c.GetHeader("X-User-Id")
+  if xUserId != "" { return view.ImportId(xUserId), true }
+
+  session := sessions.Default(c)
   val := session.Get("userId")
   if val == nil {
     return 0, false
   }
-  return ctx.model.ImportId(val.(string)), true
+  return view.ImportId(val.(string)), true
 }

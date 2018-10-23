@@ -7,72 +7,72 @@ import (
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/config"
   "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/view"
   "tezos-contests.izibi.com/backend/utils"
 )
 
 type Service struct {
   config *config.Config
   db *sql.DB
+  model *model.Model
   auth *auth.Service
 }
 
-type Context struct {
-  c *gin.Context
-  resp *utils.Response
-  model *model.Model
-  auth *auth.Context
-}
-
-func NewService(config *config.Config, db *sql.DB, auth *auth.Service) *Service {
-  return &Service{config, db, auth}
-}
-
-func (svc *Service) Wrap(c *gin.Context) *Context {
-  m := model.New(c, svc.db)
-  return &Context{
-    c,
-    utils.NewResponse(c),
-    m,
-    svc.auth.Wrap(c, m),
-  }
+func NewService(config *config.Config, db *sql.DB, model *model.Model, auth *auth.Service) *Service {
+  return &Service{config, db, model, auth}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {
 
-  r.POST("/Teams/:teamId/Leave", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
+  r.POST("/Teams/:teamId/Leave", func (c *gin.Context) {
+    r := utils.NewResponse(c)
     var err error
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    teamId := ctx.model.ImportId(c.Param("teamId"))
-    err = ctx.model.LeaveTeam(teamId, userId)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    teamId := view.ImportId(c.Param("teamId"))
+    err = svc.model.LeaveTeam(teamId, userId)
+    if err != nil { r.Error(err); return }
+    r.Ok()
   })
 
-  r.POST("/Teams/:teamId/AccessCode", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
+  r.POST("/Teams/:teamId/AccessCode", func (c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
     var err error
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    teamId := ctx.model.ImportId(c.Param("teamId"))
-    err = ctx.model.RenewTeamAccessCode(teamId, userId)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    teamId := view.ImportId(c.Param("teamId"))
+    var team *model.Team
+    team, err = svc.model.RenewTeamAccessCode(teamId, userId)
+    if err != nil { r.Error(err); return }
+    err = v.ViewUserContestTeam(userId, team.Contest_id)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
-  r.POST("/Teams/:teamId/Update", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
+  r.POST("/Teams/:teamId/Update", func (c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
     var err error
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    teamId := ctx.model.ImportId(c.Param("teamId"))
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    teamId := view.ImportId(c.Param("teamId"))
     var arg model.UpdateTeamArg
     err = c.ShouldBindJSON(&arg)
-    if err != nil { ctx.resp.Error(err); return }
-    err = ctx.model.UpdateTeam(teamId, userId, arg)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    if err != nil { r.Error(err); return }
+    var team *model.Team
+    team, err = svc.model.UpdateTeam(teamId, userId, arg)
+    if err != nil { r.Error(err); return }
+    err = v.ViewUserContestTeam(userId, team.Contest_id)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
+  })
+
+  r.GET("/TeamByCode/:code", func(c *gin.Context) {
+    /*
+      c := svc.Wrap(c)
+      team by access code -> (id, name)
+    */
   })
 
 }

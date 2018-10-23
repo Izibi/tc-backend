@@ -13,61 +13,46 @@ import (
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
+  "tezos-contests.izibi.com/backend/view"
 )
 
 type Service struct {
   config *config.Config
   db *sql.DB
   events *events.Service
+  model *model.Model
   auth *auth.Service
   blockStore *blocks.Service
 }
 
-type Context struct {
-  c *gin.Context
-  resp *utils.Response
-  model *model.Model
-  auth *auth.Context
-}
-
-func NewService(config *config.Config, db *sql.DB, events *events.Service, auth *auth.Service, blockStore *blocks.Service) *Service {
-  return &Service{config, db, events, auth, blockStore}
-}
-
-func (svc *Service) Wrap(c *gin.Context) *Context {
-  m := model.New(c, svc.db)
-  return &Context{
-    c,
-    utils.NewResponse(c),
-    m,
-    svc.auth.Wrap(c, m),
-  }
+func NewService(config *config.Config, db *sql.DB, events *events.Service, model *model.Model, auth *auth.Service, blockStore *blocks.Service) *Service {
+  return &Service{config, db, events, model, auth, blockStore}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {
 
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    oldChainId := ctx.model.ImportId(c.Param("chainId"))
-    oldChain, err := ctx.model.LoadChain(oldChainId, model.NullFacet)
-    if err != nil { ctx.resp.Error(err); return }
+    r := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    oldChainId := view.ImportId(c.Param("chainId"))
+    oldChain, err := svc.model.LoadChain(oldChainId)
+    if err != nil { r.Error(err); return }
     /*
       The user must belong to a team in contest chain.contest_id.
       TODO: quotas on number of private chains per team?
     */
-    team, err := ctx.model.LoadUserContestTeam(userId, oldChain.Contest_id, model.NullFacet)
-    if err != nil { ctx.resp.Error(err); return }
-    if team == nil { ctx.resp.StringError("access denied"); return }
+    team, err := svc.model.LoadUserContestTeam(userId, oldChain.Contest_id)
+    if err != nil { r.Error(err); return }
+    if team == nil { r.StringError("access denied"); return }
 
-    newChainId, err := ctx.model.ForkChain(team.Id, oldChainId)
-    if err != nil { ctx.resp.Error(err); return }
+    newChainId, err := svc.model.ForkChain(team.Id, oldChainId)
+    if err != nil { r.Error(err); return }
 
     /* Attempt to initialize a game on the new chain. */
-    newChain, err := ctx.model.LoadChain(newChainId, model.NullFacet)
-    if err != nil { ctx.resp.Error(err); return }
-    oldGame, err := ctx.model.LoadGame(oldChain.Game_key, model.NullFacet)
+    newChain, err := svc.model.LoadChain(newChainId)
+    if err != nil { r.Error(err); return }
+    oldGame, err := svc.model.LoadGame(oldChain.Game_key)
     if err == nil {
       block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
       if err == nil {
@@ -79,30 +64,31 @@ func (svc *Service) Route(r gin.IRoutes) {
           firstBlock = bb.Setup
         }
         if firstBlock != "" {
-          gameKey, err := ctx.model.CreateGame(newChain.Owner_id.Int64, firstBlock, 0)
+          gameKey, err := svc.model.CreateGame(newChain.Owner_id.Int64, firstBlock, 0)
           if err == nil {
-            err = ctx.model.SetChainGameKey(newChainId, gameKey)
+            err = svc.model.SetChainGameKey(newChainId, gameKey)
           }
         }
       }
     }
 
     /* XXX Temporary */
-    message := fmt.Sprintf("chain %s created", ctx.model.ExportId(newChainId))
+    message := fmt.Sprintf("chain %s created", view.ExportId(newChainId))
     svc.events.PostContestMessage(1, message)
 
-    ctx.resp.Result(j.String(ctx.model.ExportId(newChainId)))
+    r.Result(j.String(view.ExportId(newChainId)))
   })
 
   r.POST("/Chains/:chainId/Delete", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    chainId := ctx.model.ImportId(c.Param("chainId"))
-    chain, err := ctx.model.DeleteChain(userId, chainId)
-    if err != nil { ctx.resp.Error(err); return }
+    r := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    chainId := view.ImportId(c.Param("chainId"))
+    chain, err := svc.model.DeleteChain(userId, chainId)
+    if err != nil { r.Error(err); return }
 
-    message := fmt.Sprintf("chain %s deleted", ctx.model.ExportId(chain.Id))
+    /* XXX temporary */
+    message := fmt.Sprintf("chain %s deleted", view.ExportId(chain.Id))
     svc.events.PostContestMessage(1, message)
     /*
     if chain.Status_id == 1 { // XXX should query model to test if chain is private
@@ -112,42 +98,42 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     */
 
-    ctx.resp.Result(j.Boolean(true))
+    r.Result(j.Boolean(true))
   })
 
   /* Install a game on a chain. */
   r.POST("/Chains/:chainId/ChangeGame", func(c *gin.Context) {
     var err error
-    ctx := svc.Wrap(c)
+    r := utils.NewResponse(c)
     type Request struct {
       GameKey string `json:"gameKey"`
     }
     var req Request
     if c.Bind(&req) != nil { return }
 
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    if !ctx.model.IsUserAdmin(userId) { ctx.resp.StringError("Not Authorized") }
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    if !svc.model.IsUserAdmin(userId) { r.StringError("Not Authorized") }
 
-    chainId := ctx.model.ImportId(c.Param("chainId"))
+    chainId := view.ImportId(c.Param("chainId"))
     fmt.Printf("Game key: %s\n", req.GameKey)
     fmt.Printf("Chain id: %s\n", chainId)
 
-    chain, err := ctx.model.LoadChain(chainId, model.NullFacet)
-    if err != nil { ctx.resp.Error(err); return }
+    chain, err := svc.model.LoadChain(chainId)
+    if err != nil { r.Error(err); return }
 
     var game *model.Game
-    game, err = ctx.model.LoadGame(req.GameKey, model.NullFacet)
-    if err != nil { ctx.resp.Error(err); return }
-    if game == nil { ctx.resp.StringError("no such game"); return }
+    game, err = svc.model.LoadGame(req.GameKey)
+    if err != nil { r.Error(err); return }
+    if game == nil { r.StringError("no such game"); return }
     var block blocks.Block
     block, err = svc.blockStore.ReadBlock(game.Last_block)
-    if err != nil { ctx.resp.Error(err); return }
+    if err != nil { r.Error(err); return }
     protocolHash := block.Base().Protocol
 
     var intf, impl []byte
     intf, impl, err = svc.blockStore.LoadProtocol(protocolHash)
-    if err != nil { ctx.resp.Error(err); return }
+    if err != nil { r.Error(err); return }
 
     now := time.Now().Format(time.RFC3339)
     chain.Updated_at = now
@@ -155,16 +141,16 @@ func (svc *Service) Route(r gin.IRoutes) {
     chain.Interface_text = string(intf)
     chain.Implementation_text = string(impl)
     chain.Game_key = req.GameKey
-    chain.Parent_id = sql.NullString{}
+    chain.Parent_id = sql.NullInt64{}
     chain.Protocol_hash = protocolHash
     chain.New_protocol_hash = protocolHash
     chain.Nb_votes_approve = 0
     chain.Nb_votes_reject = 0
     chain.Nb_votes_unknown = 0
-    err = ctx.model.SaveChain(chain)
-    if err != nil { ctx.resp.Error(err); return }
+    err = svc.model.SaveChain(chain)
+    if err != nil { r.Error(err); return }
 
-    ctx.resp.Result(j.Boolean(true))
+    r.Result(j.Boolean(true))
   })
 
 }

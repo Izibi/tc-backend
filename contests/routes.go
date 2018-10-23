@@ -7,100 +7,93 @@ import (
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/config"
   "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/view"
   "tezos-contests.izibi.com/backend/utils"
 )
 
 type Service struct {
   config *config.Config
   db *sql.DB
+  model *model.Model
   auth *auth.Service
 }
 
-type Context struct {
-  c *gin.Context
-  resp *utils.Response
-  model *model.Model
-  auth *auth.Context
-}
-
-func NewService(config *config.Config, db *sql.DB, auth *auth.Service) *Service {
-  return &Service{config, db, auth}
-}
-
-func (svc *Service) Wrap(c *gin.Context) *Context {
-  m := model.New(c, svc.db)
-  return &Context{
-    c,
-    utils.NewResponse(c),
-    m,
-    svc.auth.Wrap(c, m),
-  }
+func NewService(config *config.Config, db *sql.DB, model *model.Model, auth *auth.Service) *Service {
+  return &Service{config, db, model, auth}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {
 
   r.GET("/Contests/:contestId", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    contestId := ctx.model.ImportId(c.Param("contestId"))
-    err := ctx.model.ViewUserContest(userId, contestId)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Param("contestId"))
+    err := v.ViewUserContest(userId, contestId)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
   r.GET("/Contests/:contestId/Team", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    contestId := ctx.model.ImportId(c.Param("contestId"))
-    err := ctx.model.ViewUserContestTeam(userId, contestId)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Param("contestId"))
+    err := v.ViewUserContestTeam(userId, contestId)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
   r.POST("/Contests/:contestId/CreateTeam", func(c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
     var err error
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    contestId := ctx.model.ImportId(c.Param("contestId"))
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Param("contestId"))
     type Body struct {
       TeamName string `json:"teamName"`
     }
     var body Body
     err = c.ShouldBindJSON(&body)
-    if err != nil { ctx.resp.Error(err); return }
-    err = ctx.model.CreateTeam(userId, contestId, body.TeamName)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    if err != nil { r.Error(err); return }
+    err = svc.model.CreateTeam(userId, contestId, body.TeamName)
+    if err != nil { r.Error(err); return }
+    // TODO ViewUserContestTeam
+    r.Send(v.Flat())
   })
 
   r.POST("/Contests/:contestId/JoinTeam", func(c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
     var err error
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    contestId := ctx.model.ImportId(c.Param("contestId"))
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Param("contestId"))
     type Body struct {
       AccessCode string `json:"accessCode"`
     }
     var body Body
     err = c.ShouldBindJSON(&body)
-    if err != nil { ctx.resp.Error(err); return }
-    err = ctx.model.JoinTeam(userId, contestId, body.AccessCode)
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    if err != nil { r.Error(err); return }
+    err = svc.model.JoinTeam(userId, contestId, body.AccessCode)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
   r.GET("/Contests/:contestId/Chains", func(c *gin.Context) {
-    ctx := svc.Wrap(c)
-    userId, ok := ctx.auth.GetUserId()
-    if !ok { ctx.resp.BadUser(); return }
-    contestId := ctx.model.ImportId(c.Param("contestId"))
-    err := ctx.model.ViewChains(userId, contestId, model.ChainFilters{})
-    if err != nil { ctx.resp.Error(err); return }
-    ctx.resp.Send(ctx.model.Flat())
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    contestId := view.ImportId(c.Param("contestId"))
+    err := v.ViewUserContest(userId, contestId)
+    if err != nil { r.Error(err); return }
+    err = v.ViewChains(userId, contestId, view.ChainFilters{})
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
 }

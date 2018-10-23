@@ -13,6 +13,7 @@ import (
   "github.com/go-redis/redis"
   "github.com/fatih/color"
   "tezos-contests.izibi.com/backend/config"
+  "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
 )
 
@@ -30,6 +31,7 @@ type Service struct {
   config *config.Config
   db *sql.DB
   redis *redis.Client
+  model *model.Model
   auth *auth.Service
   rng *rand.Rand
   channel chan interface{}
@@ -38,7 +40,7 @@ type Service struct {
   streams map[string]*stream
 }
 
-func NewService(cfg *config.Config, db *sql.DB, rc *redis.Client, auth *auth.Service) (*Service, error) {
+func NewService(cfg *config.Config, db *sql.DB, rc *redis.Client, model *model.Model, auth *auth.Service) (*Service, error) {
   var err error
   rng, err := seededRng()
   if err != nil { return nil, err }
@@ -46,6 +48,7 @@ func NewService(cfg *config.Config, db *sql.DB, rc *redis.Client, auth *auth.Ser
     cfg,
     db,
     rc,
+    model,
     auth,
     rng,
     make(chan interface{}),

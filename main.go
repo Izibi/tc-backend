@@ -6,8 +6,8 @@ import (
   "database/sql"
   "fmt"
   "html/template"
-  "io"
-  "os"
+  //"io"
+  //"os"
   "io/ioutil"
   "log"
   "net/http"
@@ -25,13 +25,13 @@ import (
   "gopkg.in/yaml.v2"
 
   "tezos-contests.izibi.com/backend/auth"
+  "tezos-contests.izibi.com/backend/landing"
   "tezos-contests.izibi.com/backend/contests"
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/events"
   "tezos-contests.izibi.com/backend/teams"
   "tezos-contests.izibi.com/backend/chains"
   "tezos-contests.izibi.com/backend/games"
-  "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
   cfg "tezos-contests.izibi.com/backend/config"
 
@@ -82,8 +82,10 @@ func main() {
 
   apiVersion := semver.MustParse(config.ApiVersion)
 
+  /*
   f, _ := os.Create("gin.log")
   gin.DefaultWriter = io.MultiWriter(f)
+  */
   // gin.SetMode(gin.ReleaseMode)
 
   // Disable Console Color
@@ -126,20 +128,22 @@ func main() {
     router = engine.Group(config.MountPath)
   }
 
-  authService := auth.NewService(&config, db)
+  model := model.New(nil/*XXX*/, db)
+  authService := auth.NewService(&config, db, model)
   authService.Route(router)
   blockStore := blocks.NewService(&config, rc)
   blockStore.Route(router)
-  eventService, err := events.NewService(&config, db, rc, authService)
+  eventService, err := events.NewService(&config, db, rc, model, authService)
   if err != nil {
     log.Panicf("Failed to connect to create event service: %s\n", err)
   }
   go eventService.Run()
   eventService.Route(router)
-  chains.NewService(&config, db, eventService, authService, blockStore).Route(router)
-  teams.NewService(&config, db, authService).Route(router)
-  games.NewService(&config, db, rc, eventService, blockStore).Route(router)
-  contests.NewService(&config, db, authService).Route(router)
+  chains.NewService(&config, db, eventService, model, authService, blockStore).Route(router)
+  landing.NewService(&config, model, authService).Route(router)
+  teams.NewService(&config, db, model, authService).Route(router)
+  games.NewService(&config, db, rc, model, eventService, blockStore).Route(router)
+  contests.NewService(&config, db, model, authService).Route(router)
 
   router.GET("/ping", func(c *gin.Context) {
     c.String(http.StatusOK, "pong")
@@ -164,6 +168,12 @@ func main() {
     c.JSON(200, &res)
   })
 
+
+  router.POST("/System/Ping", func(c *gin.Context) {
+    rc.Publish("system", "ping")
+    c.String(200, "OK")
+  })
+
   /*router.GET("/CsrfToken", func(c *gin.Context) {
     c.Data(200, "text/plain", []byte(csrf.GetToken(c)))
   });*/
@@ -174,19 +184,6 @@ func main() {
     c.Data(200, "application/javascript",
       []byte(fmt.Sprintf(";window.csrfToken = \"%s\";", token)))
   });
-
-  router.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
-    resp := utils.NewResponse(c)
-    model := model.New(c, db)
-    var err error
-    id, ok := authService.Wrap(c, model).GetUserId()
-    if !ok { resp.BadUser(); return }
-    err = model.ViewUser(id)
-    if err != nil { resp.Error(err); return }
-    err = model.ViewUserContests(id)
-    if err != nil { resp.Error(err); return }
-    resp.Send(model.Flat())
-  })
 
 /*
   // Authorized group (uses gin.BasicAuth() middleware)

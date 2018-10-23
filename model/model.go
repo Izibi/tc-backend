@@ -3,25 +3,18 @@ package model
 
 import (
   "database/sql"
-  "sort"
   "github.com/jmoiron/sqlx"
   "github.com/jmoiron/modl"
+  "github.com/go-errors/errors"
   "context"
   _ "github.com/go-sql-driver/mysql"
-  j "tezos-contests.izibi.com/backend/jase"
 )
 
 type Model struct {
   ctx context.Context
   db *sqlx.DB
   dbMap *modl.DbMap
-  chainsTable *modl.TableMap
-  teamsTable *modl.TableMap
-  result j.IObject
-  entities map[string]j.Value
-  tasks LoadSet
-  users LoadSet
-  teams LoadSet
+  tables Tables
 }
 
 func New (ctx context.Context, db *sql.DB) *Model {
@@ -32,46 +25,23 @@ func New (ctx context.Context, db *sql.DB) *Model {
   }
   model.db = sqlx.NewDb(db, "mysql")
   model.dbMap = modl.NewDbMap(db, modl.MySQLDialect{"InnoDB", "UTF8"})
-  model.chainsTable = model.dbMap.AddTableWithName(Chain{}, "chains").SetKeys(true, "Id")
-  model.teamsTable = model.dbMap.AddTableWithName(Team{}, "teams").SetKeys(true, "Id")
-  model.result = j.Object()
-  model.entities = make(map[string]j.Value)
+  model.tables.Map(model.dbMap)
   return model
 }
 
-func (m *Model) Set(key string, value j.Value) {
-  m.result.Prop(key, value)
-}
-
-func (m *Model) Add(key string, view j.Value) {
-  m.entities[key] = view
-}
-
-func (m *Model) Has(key string) bool {
-  _, ok := m.entities[key]
-  return ok
-}
-
-func (m *Model) Flat() j.Value {
-  res := j.Object()
-  res.Prop("result", m.result)
-  entities := j.Object()
-  for _, key := range orderedMapKeys(m.entities) {
-    entities.Prop(key, m.entities[key])
+func (m *Model) transaction(cb func () error) error {
+  tx, err := m.db.BeginTx(m.ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+  if err != nil { return errors.Wrap(err, 0) }
+  err = cb()
+  if err != nil {
+    tx.Rollback()
+    return err
   }
-  res.Prop("entities", entities)
-  return res
-}
-
-func orderedMapKeys(m map[string]j.Value) []string {
-  keys := make([]string, len(m))
-  i := 0
-  for key := range m {
-    keys[i] = key
-    i++
+  err = tx.Commit()
+  if err != nil {
+    return errors.Wrap(err, 0)
   }
-  sort.Strings(keys)
-  return keys
+  return nil
 }
 
 type IRow interface {

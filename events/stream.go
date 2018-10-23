@@ -155,8 +155,12 @@ func (svc *Service) getStream(key string) (*stream, error) {
   var ok bool
   {
     svc.mutex.RLock()
-    /* TODO: search in idle clients */
     st, ok = svc.streams[key]
+    /* XXX How wrong is this wrong?  If the stream is idle there's no pubsub,
+       maybe the stream is handled by another server, maybe not...
+    if !ok {
+      st, ok = svc.idleStreams[key]
+    } */
     svc.mutex.RUnlock()
   }
   if !ok {

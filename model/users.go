@@ -3,10 +3,8 @@ package model
 
 import (
   "database/sql"
-  "fmt"
   "github.com/go-errors/errors"
   "github.com/jmoiron/sqlx"
-  j "tezos-contests.izibi.com/backend/jase"
 )
 
 type User struct {
@@ -26,6 +24,14 @@ type UserProfile interface {
   Firstname() string
   Lastname() string
   Badges() []string
+}
+
+func (m *Model) LoadUser(id int64) (*User, error) {
+  var user User
+  err := m.dbMap.Get(&user, id)
+  if err == sql.ErrNoRows { return nil, nil }
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &user, nil
 }
 
 func (m *Model) FindUserByForeignId(foreignId string) (int64, error) {
@@ -95,61 +101,8 @@ func (m *Model) UpdateBadges(userId int64, badges []string) error {
   return nil
 }
 
-func (m *Model) ViewUser(userId int64) error {
-  user, err := m.loadUser(userId, BaseFacet)
-  if err != nil { return err }
-  if user != nil {
-    m.Set("userId", j.String(m.ExportId(user.Id)))
-  } else {
-    m.Set("userId", j.Null)
-  }
-  return nil
-}
-
 func (m *Model) IsUserAdmin(userId int64) bool {
-  user, err := m.loadUser(userId, NullFacet)
-  if err != nil { return false }
+  user, err := m.LoadUser(userId)
+  if err != nil || user == nil { return false }
   return user.Is_admin
-}
-
-func (m *Model) loadUser(userId int64, f Facets) (*User, error) {
-  return m.loadUserRow(m.db.QueryRowx(
-    `SELECT * FROM users WHERE id = ?`, userId), f)
-}
-
-func (m *Model) loadUsers(ids []int64) error {
-  query, args, err := sqlx.In(`SELECT * FROM users WHERE id IN (?)`, ids)
-  if err != nil { return errors.Wrap(err, 0) }
-  rows, err := m.db.Queryx(query, args...)
-  if err != nil { return errors.Wrap(err, 0) }
-  defer rows.Close()
-  for rows.Next() {
-    _, err = m.loadUserRow(rows, BaseFacet)
-    if err != nil { return err }
-  }
-  return nil
-}
-
-func (m *Model) loadUserRow(row IRow, f Facets) (*User, error) {
-  var res User
-  err := row.StructScan(&res)
-  if err == sql.ErrNoRows { return nil, nil }
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  if f.Base {
-    view := j.Object()
-    view.Prop("id", j.String(m.ExportId(res.Id)))
-    view.Prop("username", j.String(res.Username))
-    view.Prop("firstname", j.String(res.Firstname))
-    view.Prop("lastname", j.String(res.Lastname))
-    m.Add(fmt.Sprintf("users %s", m.ExportId(res.Id)), view)
-  }
-  if f.Admin {
-    view := j.Object()
-    view.Prop("foreignId", j.String(res.Foreign_id))
-    view.Prop("createdAt", j.String(res.Created_at))
-    view.Prop("updatedAt", j.String(res.Updated_at))
-    view.Prop("isAdmin", j.Boolean(res.Is_admin))
-    m.Add(fmt.Sprintf("users#admin %s", m.ExportId(res.Id)), view)
-  }
-  return &res, nil
 }

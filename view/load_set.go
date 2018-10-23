@@ -1,5 +1,5 @@
 
-package model
+package view
 
 import (
   "github.com/golang-collections/collections/set"

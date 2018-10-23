@@ -55,6 +55,24 @@ type PlayerInput struct {
   Unused []byte
 }
 
+func (m *Model) LoadGame(key string) (*Game, error) {
+  var game Game
+  err := m.dbMap.SelectOne(&game,
+    `SELECT * FROM games WHERE game_key = ?`, key)
+  if err == sql.ErrNoRows { return nil, nil }
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &game, nil
+}
+
+func (m *Model) loadGameForUpdate(key string) (*Game, error) {
+  var game Game
+  err := m.dbMap.SelectOne(&game,
+    `SELECT * FROM games WHERE game_key = ? FOR UPDATE`, key)
+  if err == sql.ErrNoRows { return nil, nil }
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return &game, nil
+}
+
 func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64) (string, error) {
   var err error
   gameKey, err := utils.NewKey()
@@ -71,7 +89,7 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint3
   err = m.transaction(func () error {
     var err error
     var game *Game
-    game, err = m.LoadGame(gameKey, NullFacet)
+    game, err = m.LoadGame(gameKey)
     if err != nil { return err }
     if game == nil { return errors.New("bad game key") }
     var ps []RegisteredGamePlayer
@@ -102,7 +120,7 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint3
 
 func (m *Model) SetPlayerCommands(gameKey string, currentBlock string, teamId int64, teamPlayer uint32, commands []byte) (err error) {
   err = m.transaction(func () error {
-    game, err := m.LoadGame(gameKey, NullFacet)
+    game, err := m.LoadGame(gameKey)
     if err != nil { return err }
     if game.Last_block != currentBlock {
       return errors.New("current block has changed")
@@ -120,7 +138,7 @@ func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) 
   var game *Game
   err = m.transaction(func () error {
     var err error
-    game, err = m.loadGameForUpdate(gameKey, NullFacet)
+    game, err = m.loadGameForUpdate(gameKey)
     if err != nil { return err }
     if game.Last_block != currentBlock {
       return errors.New("current block has changed")
@@ -135,7 +153,7 @@ func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) 
     if err != nil { return err }
     err = m.lockGame(game.Id, commands)
     if err != nil { return err }
-    // game, err = m.LoadGame(gameKey, NullFacet)
+    // game, err = m.LoadGame(gameKey)
     game.Next_block_commands = commands
     game.Locked = true
     return nil
@@ -146,7 +164,7 @@ func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) 
 
 func (m *Model) CancelRound(gameKey string) error {
   return m.transaction(func () error {
-    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    game, err := m.loadGameForUpdate(gameKey)
     if err != nil { return err }
     _, err = m.db.Exec(
       `UPDATE game_players SET locked_at = NULL WHERE game_id = ?`, game.Id)
@@ -160,7 +178,7 @@ func (m *Model) CancelRound(gameKey string) error {
 
 func (m *Model) EndRoundAndUnlock(gameKey string, newBlock string) error {
   return m.transaction(func () error {
-    game, err := m.loadGameForUpdate(gameKey, NullFacet)
+    game, err := m.loadGameForUpdate(gameKey)
     if err != nil { return err }
     if !game.Locked { return errors.New("game is not locked") }
     _, err = m.db.Exec(
@@ -240,25 +258,6 @@ func (m *Model) setPlayerCommands(gameId int64, teamId int64, teamPlayer uint32,
   return nil
 }
 
-func (m *Model) loadPlayersOfGameTeam(gameKey string, teamId int64, f Facets) ([]GamePlayer, error) {
-  var err error
-  rows, err := m.db.Queryx(
-    `SELECT gp.* FROM game_players gp
-      INNER JOIN games g ON gp.game_id = g.id
-      WHERE g.game_key = ? AND gp.team_id = ?
-      ORDER BY rank`,
-    gameKey, teamId)
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  defer rows.Close()
-  var items []GamePlayer
-  for rows.Next() {
-    item, err := m.loadGamePlayerRow(rows, f)
-    if err != nil { return nil, err }
-    items = append(items, *item)
-  }
-  return items, nil
-}
-
 func (m *Model) LoadGamePlayerTeamKeys(gameKey string) ([]string, error) {
   var err error
   rows, err := m.db.Queryx(
@@ -279,32 +278,36 @@ func (m *Model) LoadGamePlayerTeamKeys(gameKey string) ([]string, error) {
   return items, nil
 }
 
-func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) {
+func (m *Model) getNextBlockCommands (gameId int64, nbCycles uint) ([]byte, error) {
   var err error
   rows, err := m.db.Queryx(
-    `SELECT rank, commands FROM game_players gp WHERE game_id = ? ORDER BY rank`, gameId)
+    `SELECT rank, commands FROM game_players gp
+     WHERE game_id = ? ORDER BY rank FOR UPDATE`, gameId)
   if err != nil { return nil, errors.Wrap(err, 0) }
   defer rows.Close()
   var commands = j.Array()
-  var cycles = make([]j.IArray, count, count)
+  var cycles = make([]j.IArray, nbCycles, nbCycles)
   var i uint
-  for i = 0; i < count; i++ {
+  for i = 0; i < nbCycles; i++ {
     cycleCmds := j.Array()
     commands.Item(cycleCmds)
     cycles[i] = cycleCmds
   }
   for rows.Next() {
-    item, err := m.loadGamePlayerRow(rows, NullFacet)
-    if err != nil { return nil, err }
-    input, err := preparePlayerInput(item.Rank, item.Commands, count)
+    var player GamePlayer
+    err := rows.Scan(&player)
+    if err != nil { return nil, errors.Wrap(err, 0) }
+    input, err := preparePlayerInput(player.Rank, player.Commands, nbCycles)
     if err != nil { return nil, err }
     _, err = m.db.Exec(
-      `UPDATE game_players SET used = ?, unused = ? WHERE game_id = ? AND rank = ?`,
-        input.Used, input.Unused, gameId, item.Rank)
+      `UPDATE game_players
+       SET used = ?, unused = ?, updated_at = NOW()
+       WHERE game_id = ? AND rank = ?`,
+       input.Used, input.Unused, gameId, player.Rank)
     if err != nil { return nil, errors.Wrap(err, 0) }
     for i, cmd := range input.Commands {
       obj := j.Object()
-      obj.Prop("player", j.Uint32(item.Rank))
+      obj.Prop("player", j.Uint32(player.Rank))
       obj.Prop("command", j.String(ji.Get(cmd, "text").ToString()))
       cycles[i].Item(obj)
     }
@@ -317,12 +320,12 @@ func (m *Model) getNextBlockCommands (gameId int64, count uint) ([]byte, error) 
   return res, nil
 }
 
-func preparePlayerInput(rank uint32, commands []byte, count uint) (*PlayerInput, error) {
+func preparePlayerInput(rank uint32, commands []byte, nbCycles uint) (*PlayerInput, error) {
   var cmds []json.RawMessage
   err := json.Unmarshal([]byte(commands), &cmds)
   if err != nil { return nil, err }
   nbCommands := len(cmds)
-  firstUnused := int(count)
+  firstUnused := int(nbCycles)
   if firstUnused > nbCommands {
     firstUnused = nbCommands
   }
@@ -348,61 +351,4 @@ func (m *Model) lockGame (gameId int64, commands []byte) error {
     return errors.New("failed to lock game")
   }
   return nil
-}
-
-func (m *Model) LoadGame(key string, f Facets) (*Game, error) {
-  return m.loadGameRow(m.db.QueryRowx(
-    `SELECT * FROM games WHERE game_key = ?`, key), f)
-}
-
-func (m *Model) loadGameForUpdate(key string, f Facets) (*Game, error) {
-  return m.loadGameRow(m.db.QueryRowx(
-    `SELECT * FROM games WHERE game_key = ? FOR UPDATE`, key), f)
-}
-
-func (m *Model) loadGameRow(row IRow, f Facets) (*Game, error) {
-  var res Game
-  err := row.StructScan(&res)
-  if err == sql.ErrNoRows { return nil, nil }
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  if f.Base {
-    m.Add(fmt.Sprintf("games %s", m.ExportId(res.Id)), m.ViewGame(&res))
-  }
-  return &res, nil
-}
-
-func (m *Model) loadGamePlayerRow(row IRow, f Facets) (*GamePlayer, error) {
-  var res GamePlayer
-  err := row.StructScan(&res)
-  if err == sql.ErrNoRows { return nil, nil }
-  if err != nil { return nil, errors.Wrap(err, 0) }
-  if f.Base {
-    view := j.Object()
-    view.Prop("rank", j.Uint32(res.Rank))
-    view.Prop("teamId", j.Int64(res.Team_id))
-    view.Prop("botId", j.Uint32(res.Team_player /* TODO res.Bot_id */))
-    timeProp(view, "createdAt", res.Created_at)
-    timeProp(view, "updatedAt", res.Updated_at)
-    view.Prop("commands", j.Raw(res.Commands))
-  }
-  return &res, nil
-}
-
-func (m *Model) ViewGame(game *Game) j.Value {
-  if game == nil {
-    return j.Null
-  }
-  view := j.Object()
-  view.Prop("key", j.String(game.Game_key))
-  timeProp(view, "createdAt", game.Created_at)
-  timeProp(view, "updatedAt", game.Updated_at)
-  view.Prop("ownerId", j.String(m.ExportId(game.Owner_id)))
-  view.Prop("firstBlock", j.String(game.First_block))
-  view.Prop("lastBlock", j.String(game.Last_block))
-  nullTimeProp(view, "startedAt", game.Started_at)
-  nullTimeProp(view, "roundEndsAt", game.Round_ends_at)
-  view.Prop("isLocked", j.Boolean(game.Locked))
-  view.Prop("currentRound", j.Uint64(game.Current_round))
-  view.Prop("nbCyclesPerRound", j.Uint(game.Nb_cycles_per_round))
-  return view
 }

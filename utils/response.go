@@ -33,6 +33,10 @@ func (r *Response) Result(val j.Value) {
   r.Send(res)
 }
 
+func (r *Response) Ok() {
+  r.Send(j.Boolean(true))
+}
+
 func (r *Response) Error(err error) {
   res := j.Object()
   res.Prop("error", j.String(err.Error()))

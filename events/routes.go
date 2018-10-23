@@ -3,32 +3,38 @@ package events
 
 import (
   "io"
+  //"fmt"
   "time"
   "github.com/gin-gonic/gin"
   j "tezos-contests.izibi.com/backend/jase"
-  "tezos-contests.izibi.com/backend/utils"
-  "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/auth"
+  "tezos-contests.izibi.com/backend/utils"
 )
 
 type Context struct {
   resp *utils.Response
   req *utils.Request
-  model *model.Model
-  auth *auth.Context
 }
 
 func (svc *Service) Wrap(c *gin.Context) *Context {
-  m := model.New(c, svc.db)
   return &Context{
     utils.NewResponse(c),
     utils.NewRequest(c, svc.config.ApiKey),
-    m,
-    svc.auth.Wrap(c, m),
   }
 }
 
 func (svc *Service) Route(router gin.IRoutes) {
+
+/*
+  go func() {
+    i := 0
+    for {
+      time.Sleep(100 * time.Millisecond)
+      _ = svc.redis.Publish("system", fmt.Sprintf("%d", i)).Err()
+      i += 1
+    }
+  }()
+*/
 
   /*
     Clients use this route to create an event stream and obtain its key.
@@ -46,12 +52,12 @@ func (svc *Service) Route(router gin.IRoutes) {
     err = ctx.req.Signed(&req)
     if err == nil {
       var teamId int64
-      teamId, err = ctx.model.FindTeamIdByKey(req.Author[1:])
+      teamId, err = svc.model.FindTeamIdByKey(req.Author[1:])
       if err != nil { ctx.resp.Error(err); return }
       if teamId == 0 { ctx.resp.StringError("team not found"); return }
       st.SetTeamId(teamId)
     } else {
-      userId, ok := ctx.auth.GetUserId()
+      userId, ok := auth.GetUserId(c)
       if !ok { ctx.resp.StringError("authentication required"); return }
       st.SetUserId(userId)
     }
@@ -184,12 +190,11 @@ func (svc *Service) Route(router gin.IRoutes) {
     ctx.resp.Result(j.Boolean(true))
     /*
       // fmt.Printf("request is signed by %s\n", req.Author)
-      team, err := ctx.model.LoadTeam(teamId, model.NullFacet)
+      team, err := svc.model.LoadTeam(teamId, model.NullFacet)
       if err != nil { ctx.resp.Error(err); return }
       contestId = team.Contest_id
-      contestId = ctx.model.ImportId(req.ContestId)
-      team, err := ctx.model.LoadUserContestTeam(userId, chain.Contest_id, model.NullFacet)
-      team, err := ctx.model.LoadUserContestTeam(userId, contestId)
+      contestId = view.ImportId(req.ContestId)
+      team, err := view.LoadUserContestTeam(userId, contestId)
       if err != nil { ctx.resp.Error(err); return }
       teamId = team.Id
       fmt.Printf("teamId %d, contestId %d\n", teamId, contestId)

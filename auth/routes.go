@@ -17,6 +17,7 @@ import (
   "tezos-contests.izibi.com/backend/config"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/view"
 
 )
 
@@ -24,15 +25,10 @@ type Service struct {
   config *config.Config
   oauth *oauth2.Config
   db *sql.DB
-}
-
-type Context struct {
-  c *gin.Context
-  resp *utils.Response
   model *model.Model
 }
 
-func NewService(config *config.Config, db *sql.DB) *Service {
+func NewService(config *config.Config, db *sql.DB, m *model.Model) *Service {
   oauthConf := &oauth2.Config{
       ClientID: config.Auth.ClientID,
       ClientSecret: config.Auth.ClientSecret,
@@ -43,32 +39,21 @@ func NewService(config *config.Config, db *sql.DB) *Service {
       },
       Scopes: []string{"account"},
   }
-  return &Service{config, oauthConf, db}
-}
-
-func (svc *Service) Wrap(c *gin.Context, m *model.Model) *Context {
-  if m == nil {
-    m = model.New(c, svc.db)
-  }
-  return &Context{
-    c,
-    utils.NewResponse(c),
-    m,
-  }
+  return &Service{config, oauthConf, db, m}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {
 
   r.GET("/User", func (c *gin.Context) {
-    ctx := svc.Wrap(c, nil)
+    resp := utils.NewResponse(c)
+    v := view.New(svc.model)
     session := sessions.Default(c)
     val := session.Get("userId")
     if val != nil {
-      userId := val.(string)
-      err := ctx.model.ViewUser(ctx.model.ImportId(userId))
-      if err != nil { ctx.resp.Error(err); return }
+      err := v.ViewUser(view.ImportId(val.(string)))
+      if err != nil { resp.Error(err); return }
     }
-    ctx.resp.Send(ctx.model.Flat())
+    resp.Send(v.Flat())
   })
 
   r.GET("/Login", func (c *gin.Context) {
@@ -95,7 +80,6 @@ func (svc *Service) Route(r gin.IRoutes) {
   })
 
   r.GET("/LoginComplete", func (c *gin.Context) {
-    ctx := svc.Wrap(c, nil)
 
     errStr := c.Query("error")
     if errStr != "" {
@@ -122,15 +106,15 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { c.AbortWithError(500, err); return }
 
     profile := LoadUserProfile(body)
-    userId, err := ctx.model.ImportUserProfile(profile)
+    userId, err := svc.model.ImportUserProfile(profile)
     if err != nil { c.AbortWithError(500, err); return }
 
-    session.Set("userId", ctx.model.ExportId(userId))
+    session.Set("userId", view.ExportId(userId))
     session.Save()
 
     message := j.Object()
     message.Prop("type", j.String("login"))
-    message.Prop("userId", j.String(ctx.model.ExportId(userId)))
+    message.Prop("userId", j.String(view.ExportId(userId)))
     messageStr, err := j.ToString(message)
     if err != nil { c.AbortWithError(500, err) }
     data := loginCompleteData{
