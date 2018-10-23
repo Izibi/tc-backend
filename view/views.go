@@ -115,3 +115,12 @@ func (v *View) ViewChains(userId int64, contestId int64, filters ChainFilters) e
   v.Set("chainIds", chainIds)
   return nil
 }
+
+/* View a single chain, no acces control, owner not returned. */
+func (v *View) ViewChain(userId int64, chainId int64) error {
+  chain, err := v.model.LoadChain(chainId)
+  if err != nil { return err }
+  if chain == nil { return errors.New("no such chain") }
+  v.addChain(chain)
+  return nil
+}

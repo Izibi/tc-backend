@@ -151,7 +151,10 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     message := fmt.Sprintf("chain %s restarted", view.ExportId(chainId))
     svc.events.PostContestMessage(team.Contest_id, message)
-    r.Result(j.Boolean(true))
+    v := view.New(svc.model)
+    err = v.ViewChain(userId, chainId)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
   })
 
   /* Install a game on a chain. */
