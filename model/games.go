@@ -85,118 +85,106 @@ func (m *Model) CreateGame(ownerId int64, firstBlock string, currentRound uint64
   return gameKey, nil
 }
 
-func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint32) (ranks []uint32, err error) {
-  err = m.transaction(func () error {
-    var err error
-    var game *Game
-    game, err = m.LoadGame(gameKey)
-    if err != nil { return err }
-    if game == nil { return errors.New("bad game key") }
-    var ps []RegisteredGamePlayer
-    ps, err = m.loadRegisteredGamePlayer(game.Id)
-    var nextRank uint32 = uint32(len(ps)) + 1
-    bot_loop: for _, botId := range botIds {
-      for _, p := range ps {
-        if p.Team_id == teamId && botId == p.Team_player {
-          ranks = append(ranks, p.Rank)
-          continue bot_loop
-        }
-      }
-      p := RegisteredGamePlayer{
-        Rank: nextRank,
-        Team_id: teamId,
-        Team_player: botId,
-      }
-      err = m.addPlayerToGame(game.Id, &p)
-      if err != nil { return err }
-      nextRank += 1
-      ranks = append(ranks, p.Rank)
-    }
-    return nil
-  })
+func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint32) ([]uint32, error) {
+  var err error
+  var game *Game
+  game, err = m.LoadGame(gameKey)
   if err != nil { return nil, err }
+  if game == nil { return nil, errors.New("bad game key") }
+  var ps []RegisteredGamePlayer
+  ps, err = m.loadRegisteredGamePlayer(game.Id)
+  var ranks []uint32
+  var nextRank uint32 = uint32(len(ps)) + 1
+  bot_loop: for _, botId := range botIds {
+    for _, p := range ps {
+      if p.Team_id == teamId && botId == p.Team_player {
+        ranks = append(ranks, p.Rank)
+        continue bot_loop
+      }
+    }
+    p := RegisteredGamePlayer{
+      Rank: nextRank,
+      Team_id: teamId,
+      Team_player: botId,
+    }
+    err = m.addPlayerToGame(game.Id, &p)
+    if err != nil { return nil, err }
+    nextRank += 1
+    ranks = append(ranks, p.Rank)
+  }
   return ranks, nil
 }
 
 func (m *Model) SetPlayerCommands(gameKey string, currentBlock string, teamId int64, teamPlayer uint32, commands []byte) (err error) {
-  err = m.transaction(func () error {
-    game, err := m.LoadGame(gameKey)
-    if err != nil { return err }
-    if game.Last_block != currentBlock {
-      return errors.New("current block has changed")
-    }
-    fmt.Printf("setPlayerCommands %d %d %d\n", game.Id, teamId, teamPlayer)
-    return m.setPlayerCommands(game.Id, teamId, teamPlayer, commands)
-  })
-  return err
+  game, err := m.LoadGame(gameKey)
+  if err != nil { return err }
+  if game.Last_block != currentBlock {
+    return errors.New("current block has changed")
+  }
+  fmt.Printf("setPlayerCommands %d %d %d\n", game.Id, teamId, teamPlayer)
+  return m.setPlayerCommands(game.Id, teamId, teamPlayer, commands)
 }
 
-func (m *Model) CloseRound(gameKey string, teamKey string, currentBlock string) (*Game, error) {
-  teamId, err := m.FindTeamIdByKey(teamKey)
-  if err != nil { return nil, err }
+func (m *Model) CloseRound(gameKey string, teamId int64, currentBlock string) (*Game, error) {
+  var err error
   var commands []byte
   var game *Game
-  err = m.transaction(func () error {
-    var err error
-    game, err = m.loadGameForUpdate(gameKey)
-    if err != nil { return err }
-    if game.Last_block != currentBlock {
-      return errors.New("current block has changed")
-    }
-    if game.Owner_id != teamId {
-      return errors.New("only the game owner can end a round")
-    }
-    if game.Locked {
-      return errors.New("game is locked")
-    }
-    commands, err = m.getNextBlockCommands(game.Id, game.Nb_cycles_per_round)
-    if err != nil { return err }
-    err = m.lockGame(game.Id, commands)
-    if err != nil { return err }
-    // game, err = m.LoadGame(gameKey)
-    game.Next_block_commands = commands
-    game.Locked = true
-    return nil
-  })
-  if err !=  nil { return nil, err }
+  game, err = m.loadGameForUpdate(gameKey)
+  if err != nil { return nil, err }
+  if game.Last_block != currentBlock {
+    return game, errors.New("current block has changed")
+  }
+  if game.Owner_id != teamId {
+    return game, errors.New("only the game owner can end a round")
+  }
+  if game.Locked {
+    return game, errors.New("game is locked")
+  }
+  commands, err = m.getNextBlockCommands(game.Id, game.Nb_cycles_per_round)
+  if err != nil { return game, err }
+  game.Next_block_commands = commands
+  err = m.lockGame(game.Id, commands)
+  if err != nil { return game, err }
+  game.Locked = true
   return game, nil
 }
 
-func (m *Model) CancelRound(gameKey string) error {
-  return m.transaction(func () error {
-    game, err := m.loadGameForUpdate(gameKey)
-    if err != nil { return err }
-    _, err = m.db.Exec(
-      `UPDATE game_players SET locked_at = NULL WHERE game_id = ?`, game.Id)
-    if err != nil { return err }
-    _, err = m.db.Exec(
-      `UPDATE games SET locked = 0 WHERE id = ?`, game.Id)
-    if err != nil { return errors.Wrap(err, 0) }
-    return nil
-  })
+func (m *Model) CancelRound(gameKey string) (*Game, error) {
+  game, err := m.loadGameForUpdate(gameKey)
+  if err != nil { return nil, err }
+  _, err = m.db.Exec(
+    `UPDATE game_players SET locked_at = NULL WHERE game_id = ?`, game.Id)
+  if err != nil { return game, err }
+  _, err = m.db.Exec(
+    `UPDATE games SET locked = 0 WHERE id = ?`, game.Id)
+  if err != nil { return game, errors.Wrap(err, 0) }
+  game.Locked = false
+  return game, nil
 }
 
-func (m *Model) EndRoundAndUnlock(gameKey string, newBlock string) error {
-  return m.transaction(func () error {
-    game, err := m.loadGameForUpdate(gameKey)
-    if err != nil { return err }
-    if !game.Locked { return errors.New("game is not locked") }
-    _, err = m.db.Exec(
-      `UPDATE game_players SET
-        locked_at = NULL,
-        commands = IF(updated_at > locked_at, commands, unused)
-       WHERE game_id = ?`, game.Id)
-    if err != nil { return err }
-    _, err = m.db.Exec(
-      `UPDATE games SET
-        locked = 0,
-        current_round = current_round + 1,
-        last_block = ?,
-        next_block_commands = ""
-       WHERE id = ?`, newBlock, game.Id)
-    if err != nil { return errors.Wrap(err, 0) }
-    return nil
-  })
+func (m *Model) EndRoundAndUnlock(gameKey string, newBlock string) (*Game, error) {
+  game, err := m.loadGameForUpdate(gameKey)
+  if err != nil { return nil, err }
+  if !game.Locked { return game, errors.New("game is not locked") }
+  _, err = m.db.Exec(
+    `UPDATE game_players SET
+      locked_at = NULL,
+      commands = IF(updated_at > locked_at, commands, unused)
+     WHERE game_id = ?`, game.Id)
+  if err != nil { return game, err }
+  _, err = m.db.Exec(
+    `UPDATE games SET
+      locked = 0,
+      current_round = current_round + 1,
+      last_block = ?,
+      next_block_commands = ""
+     WHERE id = ?`, newBlock, game.Id)
+  if err != nil { return game, errors.Wrap(err, 0) }
+  game.Locked = false
+  game.Current_round += 1
+  game.Last_block = newBlock
+  game.Next_block_commands = []byte{}
+  return game, nil
 }
 
 /*

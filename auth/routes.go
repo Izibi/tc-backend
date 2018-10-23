@@ -7,7 +7,6 @@ import (
 
   "io/ioutil"
   "net/http"
-  "database/sql"
 
   "github.com/gin-gonic/gin"
   "github.com/gin-contrib/sessions"
@@ -24,11 +23,10 @@ import (
 type Service struct {
   config *config.Config
   oauth *oauth2.Config
-  db *sql.DB
   model *model.Model
 }
 
-func NewService(config *config.Config, db *sql.DB, m *model.Model) *Service {
+func NewService(config *config.Config, m *model.Model) *Service {
   oauthConf := &oauth2.Config{
       ClientID: config.Auth.ClientID,
       ClientSecret: config.Auth.ClientSecret,
@@ -39,7 +37,7 @@ func NewService(config *config.Config, db *sql.DB, m *model.Model) *Service {
       },
       Scopes: []string{"account"},
   }
-  return &Service{config, oauthConf, db, m}
+  return &Service{config, oauthConf, m}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {

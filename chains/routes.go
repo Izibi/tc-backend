@@ -18,15 +18,14 @@ import (
 
 type Service struct {
   config *config.Config
-  db *sql.DB
   events *events.Service
   model *model.Model
   auth *auth.Service
   blockStore *blocks.Service
 }
 
-func NewService(config *config.Config, db *sql.DB, events *events.Service, model *model.Model, auth *auth.Service, blockStore *blocks.Service) *Service {
-  return &Service{config, db, events, model, auth, blockStore}
+func NewService(config *config.Config, events *events.Service, model *model.Model, auth *auth.Service, blockStore *blocks.Service) *Service {
+  return &Service{config, events, model, auth, blockStore}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {

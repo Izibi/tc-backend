@@ -2,7 +2,6 @@
 package contests
 
 import (
-  "database/sql"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/auth"
   "tezos-contests.izibi.com/backend/config"
@@ -13,13 +12,12 @@ import (
 
 type Service struct {
   config *config.Config
-  db *sql.DB
   model *model.Model
   auth *auth.Service
 }
 
-func NewService(config *config.Config, db *sql.DB, model *model.Model, auth *auth.Service) *Service {
-  return &Service{config, db, model, auth}
+func NewService(config *config.Config, model *model.Model, auth *auth.Service) *Service {
+  return &Service{config, model, auth}
 }
 
 func (svc *Service) Route(r gin.IRoutes) {

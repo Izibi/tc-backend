@@ -4,7 +4,6 @@ package events
 import (
   "bytes"
   crand "crypto/rand"
-  "database/sql"
   "encoding/binary"
   "errors"
   "math/rand"
@@ -29,7 +28,6 @@ var hi2 = color.New(color.Bold, color.FgBlue)
 
 type Service struct {
   config *config.Config
-  db *sql.DB
   redis *redis.Client
   model *model.Model
   auth *auth.Service
@@ -40,13 +38,12 @@ type Service struct {
   streams map[string]*stream
 }
 
-func NewService(cfg *config.Config, db *sql.DB, rc *redis.Client, model *model.Model, auth *auth.Service) (*Service, error) {
+func NewService(cfg *config.Config, rc *redis.Client, model *model.Model, auth *auth.Service) (*Service, error) {
   var err error
   rng, err := seededRng()
   if err != nil { return nil, err }
   return &Service{
     cfg,
-    db,
     rc,
     model,
     auth,

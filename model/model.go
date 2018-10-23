@@ -11,15 +11,13 @@ import (
 )
 
 type Model struct {
-  ctx context.Context
   db *sqlx.DB
   dbMap *modl.DbMap
   tables Tables
 }
 
-func New (ctx context.Context, db *sql.DB) *Model {
+func New (db *sql.DB) *Model {
   model := new(Model)
-  model.ctx = ctx
   if err := db.Ping(); err != nil {
     panic("database is unreachable")
   }
@@ -29,8 +27,8 @@ func New (ctx context.Context, db *sql.DB) *Model {
   return model
 }
 
-func (m *Model) transaction(cb func () error) error {
-  tx, err := m.db.BeginTx(m.ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+func (m *Model) Transaction(ctx context.Context, cb func () error) error {
+  tx, err := m.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
   if err != nil { return errors.Wrap(err, 0) }
   err = cb()
   if err != nil {

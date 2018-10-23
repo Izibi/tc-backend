@@ -3,7 +3,6 @@ package games
 
 import (
   "fmt"
-  "database/sql"
   "io"
   "strconv"
   "time"
@@ -20,15 +19,14 @@ import (
 
 type Service struct {
   config *config.Config
-  db *sql.DB
   rc *redis.Client
   model *model.Model
   events *events.Service
   store *blocks.Service
 }
 
-func NewService(config *config.Config, db *sql.DB, rc *redis.Client, model *model.Model, events *events.Service, store *blocks.Service) *Service {
-  return &Service{config, db, rc, model, events, store}
+func NewService(config *config.Config, rc *redis.Client, model *model.Model, events *events.Service, store *blocks.Service) *Service {
+  return &Service{config, rc, model, events, store}
 }
 
 func (svc *Service) SignedRequest(c *gin.Context, req interface{}) (*utils.Response, error) {
@@ -119,7 +117,10 @@ func (svc *Service) Route(r gin.IRoutes) {
     if teamId == 0 { r.StringError("team key is not recognized"); return }
     gameKey := c.Param("gameKey")
     var ranks []uint32
-    ranks, err = svc.model.RegisterGamePlayers(gameKey, teamId, req.Ids)
+    err = svc.model.Transaction(c, func () (err error) {
+      ranks, err = svc.model.RegisterGamePlayers(gameKey, teamId, req.Ids)
+      return
+    })
     if err != nil { r.Error(err); return }
     res := j.Object()
     jRanks := j.Array()
@@ -147,8 +148,9 @@ func (svc *Service) Route(r gin.IRoutes) {
     cmds, err := svc.store.CheckCommands(block.Base(), req.Commands)
     if err != nil { r.Error(err); return }
     gameKey := c.Param("gameKey")
-    /* XXX pass raw commands to SetPlayerCommands */
-    err = svc.model.SetPlayerCommands(gameKey, req.CurrentBlock, teamId, req.Player, cmds)
+    err = svc.model.Transaction(c, func () error {
+      return svc.model.SetPlayerCommands(gameKey, req.CurrentBlock, teamId, req.Player, cmds)
+    })
     if err != nil { r.Error(err); return }
     r.Result(j.Raw(cmds))
   })
@@ -161,8 +163,15 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     r, err := svc.SignedRequest(c, &req)
     if err != nil { r.Error(err); return }
+    teamId, err := svc.model.FindTeamIdByKey(req.Author[1:])
+    if err != nil { r.Error(err); return }
+    if teamId == 0 { r.StringError("team key is not recognized"); return }
     gameKey := c.Param("gameKey")
-    game, err := svc.model.CloseRound(gameKey, req.Author[1:], req.CurrentBlock)
+    var game *model.Game
+    err = svc.model.Transaction(c, func () (err error) {
+      game, err = svc.model.CloseRound(gameKey, teamId, req.CurrentBlock)
+      return err
+    })
     if err != nil { r.Error(err); return }
     go func () {
       var err error
@@ -171,9 +180,16 @@ func (svc *Service) Route(r gin.IRoutes) {
       if err != nil { /* TODO: mark error in block */ return }
       err = svc.store.ClearHeadIndex(gameKey)
       if err != nil { /* TODO: mark error in block */ return }
-      err = svc.model.EndRoundAndUnlock(gameKey, newBlock)
-      if err != nil { /* TODO: mark error in block */ return }
-      svc.events.PostGameMessage(gameKey, newBlockMessage(newBlock))
+      err = svc.model.Transaction(c, func () (err error) {
+        _, err = svc.model.EndRoundAndUnlock(gameKey, newBlock)
+        if err != nil { /* TODO: mark error in block */ return }
+        return
+      })
+      if err != nil {
+        // TODO: post an error!
+      } else {
+        svc.events.PostGameMessage(gameKey, newBlockMessage(newBlock))
+      }
     }()
     res := j.Object()
     res.Prop("commands", j.Raw(game.Next_block_commands))
@@ -188,7 +204,10 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     r, err := svc.SignedRequest(c, &req)
     if err != nil { r.Error(err); return }
-    err = svc.model.CancelRound(req.GameKey)
+    err = svc.model.Transaction(c, func () (err error) {
+      _, err = svc.model.CancelRound(req.GameKey)
+      return
+    })
     if err != nil { r.Error(err); return }
     r.Result(j.Null)
   })
