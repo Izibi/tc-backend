@@ -125,3 +125,11 @@ func (svc *Service) deleteBlock(hash string) error {
   fmt.Printf("[svc] delete %s\n", hash)
   return os.RemoveAll(svc.blockDir(hash))
 }
+
+func (svc *Service) ReadResource(hash string, filename string) ([]byte, error) {
+  if !validateHash(hash) { return nil, errors.New("invalid hash") }
+  filePath := filepath.Join(svc.blockDir(hash), filename)
+  bs, err := ioutil.ReadFile(filePath)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return bs, nil
+}
