@@ -64,7 +64,7 @@ func (m *Model) LoadContestChains(contestId int64, filters... interface{}) ([]Ch
       }
     }
   }
-  fmt.Printf("query %s %v", query, args)
+  // fmt.Printf("query %s %v\n", query, args)
   err := m.dbMap.Select(&chains, query, args...)
   if err != nil { return nil, errors.Wrap(err, 0) }
   return chains, nil
