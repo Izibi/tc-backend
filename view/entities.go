@@ -119,11 +119,7 @@ func (v *View) addChain(chain *model.Chain) string {
   obj.Prop("parentId", parentId)
   obj.Prop("statusId", j.String(ExportId(chain.Status_id))) // XXX
   obj.Prop("title", j.String(chain.Title))
-  obj.Prop("description", j.String(chain.Description))
-  obj.Prop("interfaceText", j.String(chain.Interface_text))
-  obj.Prop("implementationText", j.String(chain.Implementation_text))
   obj.Prop("protocolHash", j.String(chain.Protocol_hash))
-  obj.Prop("newProtocolHash", j.String(chain.New_protocol_hash))
   startedAt := j.Null
   if chain.Started_at.Valid {
     startedAt = j.String(chain.Started_at.String)
@@ -134,5 +130,16 @@ func (v *View) addChain(chain *model.Chain) string {
   obj.Prop("nbVotesReject", j.Int(chain.Nb_votes_reject))
   obj.Prop("nbVotesUnknown", j.Int(chain.Nb_votes_unknown))
   v.Add(fmt.Sprintf("chains %s", id), obj)
+  return id
+}
+
+func (v *View) addChainDetails(chain *model.Chain) string {
+  id := ExportId(chain.Id)
+  obj := j.Object()
+  obj.Prop("description", j.String(chain.Description))
+  obj.Prop("interfaceText", j.String(chain.Interface_text))
+  obj.Prop("implementationText", j.String(chain.Implementation_text))
+  obj.Prop("newProtocolHash", j.String(chain.New_protocol_hash))
+  v.Add(fmt.Sprintf("chains#details %s", id), obj)
   return id
 }

@@ -44,6 +44,22 @@ func (svc *Service) Route(r gin.IRoutes) {
     r.Send(v.Flat())
   })
 
+  r.GET("/Chains/:chainId", func(c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    chainId := view.ImportId(c.Param("chainId"))
+    chain, err := svc.model.LoadChain(chainId)
+    if err != nil { r.Error(err); return }
+    team, err := svc.model.LoadUserContestTeam(userId, chain.Contest_id)
+    if err != nil { r.Error(err); return }
+    if team == nil { r.StringError("access denied"); return }
+    err = v.ViewChainDetails(team.Id, chainId)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
+  })
+
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
     r := utils.NewResponse(c)
     userId, ok := auth.GetUserId(c)
