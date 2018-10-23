@@ -17,6 +17,21 @@ func (v *View) loadTeams(ids []int64) error {
   return nil
 }
 
+func (v *View) loadContestTeams(contestId int64) error {
+  teams, err := v.model.LoadContestTeams(contestId)
+  if err != nil { return err }
+  ids := j.Array()
+  for i := range teams {
+    team := &teams[i]
+    ids.Item(j.String(ExportId(team.Id)))
+    v.addTeam(team)
+  }
+  obj := j.Object()
+  obj.Prop("teamIds", ids)
+  v.Add(fmt.Sprintf("contests#teams %s", ExportId(contestId)), obj)
+  return nil
+}
+
 func (v *View) loadTasks(ids []int64) error {
   tasks, err := v.model.LoadTasksById(ids)
   if err != nil { return err }

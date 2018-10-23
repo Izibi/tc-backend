@@ -46,6 +46,13 @@ func (m *Model) LoadUserContestTeam(userId int64, contestId int64) (*Team, error
   return &team, nil
 }
 
+func (m *Model) LoadContestTeams(contestId int64) ([]Team, error) {
+  var teams []Team
+  err := m.dbMap.Select(&teams, `SELECT * FROM teams WHERE contest_id = ?`, contestId)
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  return teams, nil
+}
+
 func (m *Model) LoadTeamsById(ids []int64) ([]Team, error) {
   var teams []Team
   query, args, err := sqlx.In(`SELECT * FROM teams WHERE id IN (?)`, ids)

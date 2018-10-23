@@ -53,8 +53,8 @@ func (v *View) ViewUserContest(userId int64, contestId int64) error {
   if err != nil { return err }
   err = v.loadTaskResources(contest.Task_id)
   if err != nil { return err }
-
-  // TODO: LoadContestTeams
+  err = v.loadContestTeams(contestId)
+  if err != nil { return err }
 
   return nil
 }
