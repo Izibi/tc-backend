@@ -84,9 +84,9 @@ func (svc *Service) Route(r gin.IRoutes) {
       }
     }
 
-    /* XXX Temporary */
+    /* XXX Temporary, post on team channel as chain is private */
     message := fmt.Sprintf("chain %s created", view.ExportId(newChainId))
-    svc.events.PostContestMessage(1, message)
+    svc.events.PostContestMessage(team.Contest_id, message)
 
     r.Result(j.String(view.ExportId(newChainId)))
   })
@@ -101,7 +101,7 @@ func (svc *Service) Route(r gin.IRoutes) {
 
     /* XXX temporary */
     message := fmt.Sprintf("chain %s deleted", view.ExportId(chain.Id))
-    svc.events.PostContestMessage(1, message)
+    svc.events.PostContestMessage(chain.Contest_id, message)
     /*
     if chain.Status_id == 1 { // XXX should query model to test if chain is private
       svc.events.PostTeamMessage(chain.Owner_id.Int64, message)
