@@ -26,7 +26,7 @@ func (v *View) ViewUserContests(userId int64) error {
   contestIds := j.Array()
   for i := range contests {
     contest := &contests[i]
-    v.addContest(contest)
+    contestIds.Item(j.String(v.addContest(contest)))
     v.tasks.Need(contest.Task_id)
   }
   err = v.tasks.Load(v.loadTasks)
