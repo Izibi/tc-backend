@@ -53,7 +53,7 @@ func (m *Model) LoadContestChains(contestId int64, filters... interface{}) ([]Ch
       case "main":
         query = query + ` AND status_id = 4`
       case "private_test":
-        query = query + ` AND status_id = 1 AND team_id = ?`
+        query = query + ` AND status_id = 1 AND owner_id = ?`
         args = append(args, filter.TeamId)
       case "public_test":
         query = query + ` AND status_id = 2`
