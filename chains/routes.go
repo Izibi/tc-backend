@@ -69,13 +69,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err == nil {
       block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
       if err == nil {
-        bb := block.Base()
-        var firstBlock string
-        if bb.Kind == "setup" {
-          firstBlock = oldGame.Last_block
-        } else if bb.Setup != "" {
-          firstBlock = bb.Setup
-        }
+        firstBlock := blocks.LastSetupBlock(oldGame.Last_block, block)
         if firstBlock != "" {
           gameParams := model.GameParams{
             First_round: 0,
@@ -137,7 +131,7 @@ func (svc *Service) Route(r gin.IRoutes) {
     if game == nil { r.StringError("no game on chain"); return }
     lastBlock, err := svc.blockStore.ReadBlock(game.Last_block)
     if err != nil { r.Error(err); return }
-    setupHash := lastBlock.Base().Setup
+    setupHash := blocks.LastSetupBlock(game.Last_block, lastBlock)
     if setupHash == "" { r.StringError("no setup block"); return }
     /* Load params from the store to keep task-specific params. */
     bsParams, err := svc.blockStore.ReadResource(setupHash, "params.json")
