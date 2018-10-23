@@ -4,6 +4,7 @@ package chains
 import (
   "fmt"
   "database/sql"
+  "encoding/json"
   "time"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/auth"
@@ -116,6 +117,46 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     */
 
+    r.Result(j.Boolean(true))
+  })
+
+  r.POST("/Chains/:chainId/Restart", func(c *gin.Context) {
+    r := utils.NewResponse(c)
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    chainId := view.ImportId(c.Param("chainId"))
+    chain, err := svc.model.LoadChain(chainId)
+    if err != nil { r.Error(err); return }
+    team, err := svc.model.LoadUserContestTeam(userId, chain.Contest_id)
+    if err != nil { r.Error(err); return }
+    if team == nil { r.StringError("access denied"); return }
+    protoHash := chain.New_protocol_hash
+    if protoHash == "" { r.StringError("invalid new protocol"); return }
+    game, err := svc.model.LoadGame(chain.Game_key)
+    if err != nil { r.Error(err); return }
+    if game == nil { r.StringError("no game on chain"); return }
+    lastBlock, err := svc.blockStore.ReadBlock(game.Last_block)
+    if err != nil { r.Error(err); return }
+    setupHash := lastBlock.Base().Setup
+    if setupHash == "" { r.StringError("no setup block"); return }
+    /* Load params from the store to keep task-specific params. */
+    bsParams, err := svc.blockStore.ReadResource(setupHash, "params.json")
+    if err != nil { r.Error(err) }
+    var gameParams model.GameParams
+    err = json.Unmarshal(bsParams, &gameParams)
+    if err != nil { r.Error(err); return }
+    setupHash, err = svc.blockStore.MakeSetupBlock(protoHash, bsParams)
+    if err != nil { r.Error(err) }
+    gameKey, err := svc.model.CreateGame(team.Id, setupHash, gameParams)
+    if err != nil { r.Error(err); return }
+    now := time.Now().Format(time.RFC3339)
+    chain.Updated_at = now
+    chain.Started_at = sql.NullString{}
+    chain.Game_key = gameKey
+    err = svc.model.SaveChain(chain)
+    if err != nil { r.Error(err); return }
+    message := fmt.Sprintf("chain %s restarted", view.ExportId(chainId))
+    svc.events.PostContestMessage(team.Contest_id, message)
     r.Result(j.Boolean(true))
   })
 
