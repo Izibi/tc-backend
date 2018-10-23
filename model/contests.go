@@ -43,7 +43,7 @@ func (m *Model) LoadUserContests(userId int64) ([]Contest, error) {
   var err error
   var contests []Contest
   err = m.dbMap.Select(&contests,
-    `SELECT c.id FROM user_badges ub, contests c
+    `SELECT c.* FROM user_badges ub, contests c
      WHERE ub.user_id = ? AND ub.badge_id = c.required_badge_id`, userId)
   if err != nil { return nil, errors.Wrap(err, 0) }
   return contests, nil
