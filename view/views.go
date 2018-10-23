@@ -91,6 +91,7 @@ func (v *View) ViewChains(userId int64, contestId int64, filters ChainFilters) e
   if v.teamId == 0 {
     team, err := v.model.LoadUserContestTeam(userId, contestId)
     if err != nil { return err }
+    if team == nil { return errors.New("access denied") }
     v.teamId = team.Id
   }
   /*
