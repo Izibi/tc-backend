@@ -52,6 +52,9 @@ func (svc *Service) Route(r gin.IRoutes) {
     }
     result := j.Object()
     result.Prop("game", ViewGame(game))
+    ps, err := svc.model.LoadRegisteredGamePlayer(game.Id)
+    if err != nil { r.Error(err); return }
+    result.Prop("players", ViewPlayers(ps))
     if game != nil {
       lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
       if err != nil { r.Error(err); return }
@@ -321,19 +324,22 @@ func ViewGame(game *model.Game) j.Value {
   obj.Prop("isLocked", j.Boolean(game.Locked))
   obj.Prop("currentRound", j.Uint64(game.Current_round))
   obj.Prop("nbCyclesPerRound", j.Uint32(game.Nb_cycles_per_round))
+  obj.Prop("nbRounds", j.Uint64(game.Max_nb_rounds))
+  obj.Prop("nbPlayers", j.Uint32(game.Max_nb_players))
   return obj
 }
 
-func ViewGamePlayer(player *model.GamePlayer) j.Value {
-  obj := j.Object()
-  obj.Prop("gameId", j.Int64(player.Game_id))
-  obj.Prop("rank", j.Uint32(player.Rank))
-  obj.Prop("teamId", j.Int64(player.Team_id))
-  obj.Prop("botId", j.Uint32(player.Team_player /* TODO res.Bot_id */))
-  obj.Prop("createdAt", j.Time(player.Created_at))
-  obj.Prop("updatedAt", j.Time(player.Updated_at))
-  obj.Prop("commands", j.Raw(player.Commands))
-  return obj
+func ViewPlayers(players []model.RegisteredGamePlayer) j.Value {
+  items := j.Array()
+  for i := range players {
+    player := &players[i]
+    obj := j.Object()
+    obj.Prop("rank", j.Uint32(player.Rank))
+    obj.Prop("teamId", j.String(view.ExportId(player.Team_id)))
+    obj.Prop("botId", j.Uint32(player.Team_player /* TODO res.Bot_id */))
+    items.Item(obj)
+  }
+  return items
 }
 
 func newPingMessage(payload string) string {

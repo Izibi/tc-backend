@@ -115,7 +115,7 @@ func (m *Model) RegisterGamePlayers(gameKey string, teamId int64, botIds []uint3
   if err != nil { return nil, err }
   if game == nil { return nil, errors.New("bad game key") }
   var ps []RegisteredGamePlayer
-  ps, err = m.loadRegisteredGamePlayer(game.Id)
+  ps, err = m.LoadRegisteredGamePlayer(game.Id)
   var ranks []uint32
   var nextRank uint32 = uint32(len(ps)) + 1
   bot_loop: for _, botId := range botIds {
@@ -223,7 +223,7 @@ func (m *Model) getGameId(gameKey string) (string, error) {
 }
 */
 
-func (m *Model) loadRegisteredGamePlayer(gameId int64) ([]RegisteredGamePlayer, error) {
+func (m *Model) LoadRegisteredGamePlayer(gameId int64) ([]RegisteredGamePlayer, error) {
   var err error
   rows, err := m.db.Queryx(
     `SELECT rank, team_id, team_player FROM game_players WHERE game_id = ? ORDER by rank`, gameId)
