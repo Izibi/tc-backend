@@ -1,5 +1,5 @@
 
-package chains
+package routes
 
 import (
   "fmt"
@@ -9,27 +9,13 @@ import (
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/auth"
   j "tezos-contests.izibi.com/backend/jase"
-  "tezos-contests.izibi.com/backend/config"
-  "tezos-contests.izibi.com/backend/events"
   "tezos-contests.izibi.com/backend/blocks"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/view"
 )
 
-type Service struct {
-  config *config.Config
-  events *events.Service
-  model *model.Model
-  auth *auth.Service
-  blockStore *blocks.Service
-}
-
-func NewService(config *config.Config, events *events.Service, model *model.Model, auth *auth.Service, blockStore *blocks.Service) *Service {
-  return &Service{config, events, model, auth, blockStore}
-}
-
-func (svc *Service) Route(r gin.IRoutes) {
+func (svc *Service) RouteChains(r gin.IRoutes) {
 
   r.GET("/Chains", func(c *gin.Context) {
     r := utils.NewResponse(c)
@@ -94,12 +80,12 @@ func (svc *Service) Route(r gin.IRoutes) {
       if err != nil { return }
       oldGame, err := svc.model.LoadGame(oldChain.Game_key)
       if err != nil { return }
-      block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
+      block, err := svc.store.ReadBlock(oldGame.Last_block)
       if err != nil { return }
       firstBlock := blocks.LastSetupBlock(oldGame.Last_block, block)
       if firstBlock == "" { return fmt.Errorf("no setup block") }
       // Read and parse the params from the setup block.
-      bsParams, err := svc.blockStore.ReadResource(firstBlock, "params.json")
+      bsParams, err := svc.store.ReadResource(firstBlock, "params.json")
       if err != nil { return }
       var setupParams struct {
         NbCyclesPerRound uint32 `json:"cycles_per_round"`
@@ -167,17 +153,17 @@ func (svc *Service) Route(r gin.IRoutes) {
     game, err := svc.model.LoadGame(chain.Game_key)
     if err != nil { r.Error(err); return }
     if game == nil { r.StringError("no game on chain"); return }
-    lastBlock, err := svc.blockStore.ReadBlock(game.Last_block)
+    lastBlock, err := svc.store.ReadBlock(game.Last_block)
     if err != nil { r.Error(err); return }
     setupHash := blocks.LastSetupBlock(game.Last_block, lastBlock)
     if setupHash == "" { r.StringError("no setup block"); return }
     /* Load params from the store to keep task-specific params. */
-    bsParams, err := svc.blockStore.ReadResource(setupHash, "params.json")
+    bsParams, err := svc.store.ReadResource(setupHash, "params.json")
     if err != nil { r.Error(err) }
     var gameParams model.GameParams
     err = json.Unmarshal(bsParams, &gameParams)
     if err != nil { r.Error(err); return }
-    setupHash, err = svc.blockStore.MakeSetupBlock(protoHash, bsParams)
+    setupHash, err = svc.store.MakeSetupBlock(protoHash, bsParams)
     if err != nil { r.Error(err) }
     gameKey, err := svc.model.CreateGame(team.Id, setupHash, gameParams)
     if err != nil { r.Error(err); return }
@@ -221,12 +207,12 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     if game == nil { r.StringError("no such game"); return }
     var block blocks.Block
-    block, err = svc.blockStore.ReadBlock(game.Last_block)
+    block, err = svc.store.ReadBlock(game.Last_block)
     if err != nil { r.Error(err); return }
     protocolHash := block.Base().Protocol
 
     var intf, impl []byte
-    intf, impl, err = svc.blockStore.LoadProtocol(protocolHash)
+    intf, impl, err = svc.store.LoadProtocol(protocolHash)
     if err != nil { r.Error(err); return }
 
     now := time.Now().Format(time.RFC3339)

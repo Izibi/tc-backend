@@ -1,5 +1,5 @@
 
-package games
+package routes
 
 import (
   "encoding/json"
@@ -7,36 +7,15 @@ import (
   "io"
   "strconv"
   "time"
-  "github.com/go-redis/redis"
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/blocks"
-  "tezos-contests.izibi.com/backend/config"
-  "tezos-contests.izibi.com/backend/events"
   "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/utils"
   "tezos-contests.izibi.com/backend/view"
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-type Service struct {
-  config *config.Config
-  rc *redis.Client
-  model *model.Model
-  events *events.Service
-  store *blocks.Service
-}
-
-func NewService(config *config.Config, rc *redis.Client, model *model.Model, events *events.Service, store *blocks.Service) *Service {
-  return &Service{config, rc, model, events, store}
-}
-
-func (svc *Service) SignedRequest(c *gin.Context, req interface{}) (*utils.Response, error) {
-  r := utils.NewResponse(c)
-  err := utils.NewRequest(c, svc.config.ApiKey).Signed(req)
-  return r, err
-}
-
-func (svc *Service) Route(r gin.IRoutes) {
+func (svc *Service) RouteGames(r gin.IRoutes) {
 
   r.GET("/Games/:gameKey", func (c *gin.Context) {
     r := utils.NewResponse(c)

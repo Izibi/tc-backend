@@ -1,26 +1,14 @@
 
-package landing
+package routes
 
 import (
   "github.com/gin-gonic/gin"
   "tezos-contests.izibi.com/backend/auth"
-  "tezos-contests.izibi.com/backend/config"
-  "tezos-contests.izibi.com/backend/model"
   "tezos-contests.izibi.com/backend/view"
   "tezos-contests.izibi.com/backend/utils"
 )
 
-type Service struct {
-  config *config.Config
-  model *model.Model
-  auth *auth.Service
-}
-
-func NewService(config *config.Config, model *model.Model, auth *auth.Service) *Service {
-  return &Service{config, model, auth}
-}
-
-func (svc *Service) Route(r gin.IRoutes) {
+func (svc *Service) RouteLanding(r gin.IRoutes) {
 
   r.GET("/AuthenticatedUserLanding", func(c *gin.Context) {
     r := utils.NewResponse(c)

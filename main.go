@@ -25,15 +25,11 @@ import (
   "gopkg.in/yaml.v2"
 
   "tezos-contests.izibi.com/backend/auth"
-  "tezos-contests.izibi.com/backend/landing"
-  "tezos-contests.izibi.com/backend/contests"
   "tezos-contests.izibi.com/backend/blocks"
-  "tezos-contests.izibi.com/backend/events"
-  "tezos-contests.izibi.com/backend/teams"
-  "tezos-contests.izibi.com/backend/chains"
-  "tezos-contests.izibi.com/backend/games"
-  "tezos-contests.izibi.com/backend/model"
   cfg "tezos-contests.izibi.com/backend/config"
+  "tezos-contests.izibi.com/backend/events"
+  "tezos-contests.izibi.com/backend/model"
+  "tezos-contests.izibi.com/backend/routes"
 
 )
 
@@ -139,11 +135,7 @@ func main() {
   }
   go eventService.Run()
   eventService.Route(router)
-  chains.NewService(&config, eventService, model, authService, blockStore).Route(router)
-  landing.NewService(&config, model, authService).Route(router)
-  teams.NewService(&config, model, authService).Route(router)
-  games.NewService(&config, rc, model, eventService, blockStore).Route(router)
-  contests.NewService(&config, model, authService).Route(router)
+  routes.NewService(&config, rc, model, authService, eventService, blockStore).RouteAll(router)
 
   router.GET("/ping", func(c *gin.Context) {
     c.String(http.StatusOK, "pong")
