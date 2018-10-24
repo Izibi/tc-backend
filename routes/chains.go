@@ -47,6 +47,56 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     r.Send(v.Flat())
   })
 
+  r.POST("/Chains/:chainId/Update", func (c *gin.Context) {
+    r := utils.NewResponse(c)
+    v := view.New(svc.model)
+    var err error
+    userId, ok := auth.GetUserId(c)
+    if !ok { r.BadUser(); return }
+    chainId := view.ImportId(c.Param("chainId"))
+    chain, err := svc.model.LoadChain(chainId)
+    if err != nil { r.Error(err); return }
+    if !svc.model.IsUserAdmin(userId) {
+      if !chain.Owner_id.Valid {
+        r.StringError("access denied"); return
+      }
+      team, err := svc.model.LoadUserContestTeam(userId, chain.Contest_id)
+      if err != nil { r.Error(err); return }
+      if team == nil || team.Id != chain.Owner_id.Int64 {
+        r.StringError("access denied"); return
+      }
+      v.SetTeam(team.Id) // view will protect private chains from other teams
+    }
+    var arg struct {
+      StatusId *string `json:"statusId"`
+      Description *string `json:"description"`
+      Interface_text *string `json:"interfaceText"`
+      Implementation_text *string `json:"implementationText"`
+    }
+    err = c.Bind(&arg)
+    if err != nil { r.Error(err); return }
+    if arg.StatusId != nil {
+      chain.Status_id = view.ImportId(*arg.StatusId)
+    }
+    if arg.Description != nil {
+      chain.Description = *arg.Description
+    }
+    if arg.Interface_text != nil && *arg.Interface_text != chain.Interface_text {
+      chain.Interface_text = *arg.Interface_text
+      chain.Needs_recompile = true
+    }
+    if arg.Implementation_text != nil && *arg.Implementation_text != chain.Implementation_text {
+      chain.Implementation_text = *arg.Implementation_text
+      chain.Needs_recompile = true
+    }
+    chain.Updated_at = time.Now()
+    err = svc.model.SaveChain(chain)
+    if err != nil { r.Error(err); return }
+    err = v.ViewChainDetails(chain.Id)
+    if err != nil { r.Error(err); return }
+    r.Send(v.Flat())
+  })
+
   r.POST("/Chains/:chainId/Fork", func(c *gin.Context) {
     var err error
     r := utils.NewResponse(c)

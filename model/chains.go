@@ -26,6 +26,7 @@ type Chain struct {
   Nb_votes_reject int
   Nb_votes_unknown int
   Nb_votes_approve int
+  Needs_recompile bool
 }
 
 type ChainStatusFilter struct {
