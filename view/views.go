@@ -125,7 +125,7 @@ func (v *View) ViewChain(userId int64, chainId int64) error {
   return nil
 }
 
-func (v *View) ViewChainDetails(teamId int64, chainId int64) error {
+func (v *View) ViewChainDetails(chainId int64) error {
   chain, err := v.model.LoadChain(chainId)
   if err != nil { return err }
   if chain == nil { return errors.New("no such chain") }

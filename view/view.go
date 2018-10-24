@@ -77,3 +77,7 @@ func ImportId(id string) int64 {
 func ExportId(id int64) string {
   return strconv.FormatInt(id, 10)
 }
+
+func (v *View) SetTeam(teamId int64) {
+  v.teamId = teamId
+}

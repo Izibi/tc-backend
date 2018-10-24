@@ -41,7 +41,8 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     team, err := svc.model.LoadUserContestTeam(userId, chain.Contest_id)
     if err != nil { r.Error(err); return }
     if team == nil { r.StringError("access denied"); return }
-    err = v.ViewChainDetails(team.Id, chainId)
+    v.SetTeam(team.Id) // view will protect private chains from other teams
+    err = v.ViewChainDetails(chainId)
     if err != nil { r.Error(err); return }
     r.Send(v.Flat())
   })
