@@ -38,11 +38,13 @@ func (v *View) addTeam(team *model.Team) string {
   obj.Prop("isLocked", j.Boolean(team.Is_locked))
   obj.Prop("name", j.String(team.Name))
   obj.Prop("publicKey", j.String(team.Public_key))
+  v.Add(fmt.Sprintf("teams %s", id), obj)
   if v.teamId == team.Id {
+    obj := j.Object()
     obj.Prop("accessCode", j.String(team.Access_code))
     v.teamMembers.Need(team.Id)
+    v.Add(fmt.Sprintf("teams#member %s", id), obj)
   }
-  v.Add(fmt.Sprintf("teams %s", id), obj)
   return id
 }
 
