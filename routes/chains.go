@@ -167,8 +167,7 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     if err != nil { r.Error(err) }
     gameKey, err := svc.model.CreateGame(team.Id, setupHash, gameParams)
     if err != nil { r.Error(err); return }
-    now := time.Now().Format(time.RFC3339)
-    chain.Updated_at = now
+    chain.Updated_at = time.Now()
     chain.Started_at = sql.NullString{}
     chain.Game_key = gameKey
     err = svc.model.SaveChain(chain)
@@ -215,8 +214,7 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     intf, impl, err = svc.store.LoadProtocol(protocolHash)
     if err != nil { r.Error(err); return }
 
-    now := time.Now().Format(time.RFC3339)
-    chain.Updated_at = now
+    chain.Updated_at = time.Now()
     chain.Started_at = sql.NullString{}
     chain.Interface_text = string(intf)
     chain.Implementation_text = string(impl)

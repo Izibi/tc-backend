@@ -106,8 +106,8 @@ func (v *View) addChain(chain *model.Chain) string {
   id := ExportId(chain.Id)
   obj := j.Object()
   obj.Prop("id", j.String(ExportId(chain.Id)))
-  obj.Prop("createdAt", j.String(chain.Created_at))
-  obj.Prop("updatedAt", j.String(chain.Updated_at))
+  obj.Prop("createdAt", j.Time(chain.Created_at))
+  obj.Prop("updatedAt", j.Time(chain.Updated_at))
   obj.Prop("contestId", j.String(ExportId(chain.Contest_id)))
   ownerId := j.Null
   if chain.Owner_id.Valid {
