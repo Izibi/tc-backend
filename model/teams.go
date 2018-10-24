@@ -145,7 +145,7 @@ func (m *Model) JoinTeam(userId int64, contestId int64, accessCode string) error
   /* Verify the max team size is not exceeded. */
   teamSize, err := m.getTeamMembersCount(team.Id)
   if err != nil { return err }
-  if teamSize >= 3 { return errors.Errorf("team is full") }
+  if teamSize >= 5 { return errors.Errorf("team is full") }
 
   /* Add the user as team member */
   _, err = m.db.Exec(
