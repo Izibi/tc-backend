@@ -210,8 +210,8 @@ func (svc *Service) Route(r gin.IRoutes) {
     if !svc.model.IsUserAdmin(userId) { r.StringError("Not Authorized") }
 
     chainId := view.ImportId(c.Param("chainId"))
-    fmt.Printf("Game key: %s\n", req.GameKey)
-    fmt.Printf("Chain id: %s\n", chainId)
+    // fmt.Printf("Game key: %s\n", req.GameKey)
+    // fmt.Printf("Chain id: %d\n", chainId)
 
     chain, err := svc.model.LoadChain(chainId)
     if err != nil { r.Error(err); return }
