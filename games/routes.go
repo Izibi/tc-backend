@@ -2,6 +2,7 @@
 package games
 
 import (
+  "encoding/json"
   "fmt"
   "io"
   "strconv"
@@ -83,31 +84,38 @@ func (svc *Service) Route(r gin.IRoutes) {
     var req struct {
       Author string `json:"author"`
       FirstBlock string `json:"first_block"`
-      NbCyclesPerRound uint32 `json:"nb_cycles_per_round"`
-      Max_nb_rounds uint64 `json:"max_nb_rounds"`
-      Max_nb_players uint32 `json:"max_nb_players"`
       // TODO: add a nonce
     }
     r, err := svc.SignedRequest(c, &req)
     if err != nil { r.Error(err); return }
-    if req.NbCyclesPerRound == 0 {
-      req.NbCyclesPerRound = 10
-    }
-    fmt.Printf("new game request %v\n", req)
+    ownerId, err := svc.model.FindTeamIdByKey(req.Author[1:])
+    if ownerId == 0 { r.StringError("team key is not recognized"); return }
+    if err != nil { r.Error(err); return }
+    // Read the requested first block.
     var block blocks.Block
     block, err = svc.store.ReadBlock(req.FirstBlock)
     if err != nil {
       r.StringError("bad first block")
       return
     }
-    ownerId, err := svc.model.FindTeamIdByKey(req.Author[1:])
-    if ownerId == 0 { r.StringError("team key is not recognized"); return }
+    // Find the last setup block in the chain.
+    setupBlock := blocks.LastSetupBlock(req.FirstBlock, block)
+    if setupBlock == "" { r.StringError("no setup block"); return }
+    // Read and parse the params from the setup block.
+    bsParams, err := svc.store.ReadResource(setupBlock, "params.json")
+    if err != nil { r.Error(err); return }
+    var setupParams struct {
+      NbCyclesPerRound uint32 `json:"cycles_per_round"`
+      Nb_players uint32 `json:"nb_players"`
+      Nb_rounds uint64 `json:"nb_rounds"`
+    }
+    err = json.Unmarshal(bsParams, &setupParams)
     if err != nil { r.Error(err); return }
     gameParams := model.GameParams{
       First_round: block.Base().Round,
-      Nb_rounds: req.Max_nb_rounds,
-      Nb_players: req.Max_nb_players,
-      Cycles_per_round: req.NbCyclesPerRound,
+      Nb_rounds: setupParams.Nb_rounds,
+      Nb_players: setupParams.Nb_players,
+      Cycles_per_round: setupParams.NbCyclesPerRound,
     }
     gameKey, err := svc.model.CreateGame(ownerId, req.FirstBlock, gameParams)
     if err != nil { r.Error(err); return }
