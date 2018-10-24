@@ -29,6 +29,15 @@ type Chain struct {
   Needs_recompile bool
 }
 
+type ChainRevision struct {
+  Id int64
+  Created_at time.Time
+  Chain_id int64
+  Status_id int64
+  Game_key string
+  Protocol_hash string
+}
+
 type ChainStatusFilter struct {
   Status string
   TeamId int64
@@ -137,4 +146,15 @@ func (m *Model) SetChainGameKey(chainId int64, gameKey string) error {
 func (m *Model) SaveChain(chain *Chain) error {
   _, err := m.dbMap.Update(chain)
   return err
+}
+
+func (m *Model) SaveChainRevision(chain *Chain) error {
+  revision := ChainRevision{
+    Created_at: time.Now(),
+    Chain_id: chain.Id,
+    Status_id: chain.Status_id,
+    Game_key: chain.Game_key,
+    Protocol_hash: chain.Protocol_hash,
+  }
+  return m.dbMap.Insert(&revision)
 }

@@ -67,6 +67,8 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
       }
       v.SetTeam(team.Id) // view will protect private chains from other teams
     }
+    err = svc.model.SaveChainRevision(chain)
+    if err != nil { r.Error(err); return }
     var arg struct {
       StatusId *string `json:"statusId"`
       Description *string `json:"description"`
@@ -218,6 +220,8 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     if err != nil { r.Error(err) }
     gameKey, err := svc.model.CreateGame(team.Id, setupHash, gameParams)
     if err != nil { r.Error(err); return }
+    err = svc.model.SaveChainRevision(chain)
+    if err != nil { r.Error(err); return }
     chain.Updated_at = time.Now()
     chain.Started_at = sql.NullString{}
     chain.Game_key = gameKey
@@ -265,6 +269,8 @@ func (svc *Service) RouteChains(r gin.IRoutes) {
     intf, impl, err = svc.store.LoadProtocol(protocolHash)
     if err != nil { r.Error(err); return }
 
+    err = svc.model.SaveChainRevision(chain)
+    if err != nil { r.Error(err); return }
     chain.Updated_at = time.Now()
     chain.Started_at = sql.NullString{}
     chain.Interface_text = string(intf)

@@ -6,6 +6,7 @@ import (
 
 type Tables struct {
   chains *modl.TableMap
+  chainRevisions *modl.TableMap
   contests *modl.TableMap
   games *modl.TableMap
   gamePlayers *modl.TableMap
@@ -20,6 +21,7 @@ type Tables struct {
 
 func (t *Tables) Map(m *modl.DbMap) {
   t.chains = m.AddTableWithName(Chain{}, "chains").SetKeys(true, "Id")
+  t.chainRevisions = m.AddTableWithName(ChainRevision{}, "chain_revisions").SetKeys(true, "Id")
   t.contests = m.AddTableWithName(Contest{}, "contests").SetKeys(true, "Id")
   t.games = m.AddTableWithName(Game{}, "games").SetKeys(true, "Id")
   t.gamePlayers = m.AddTableWithName(GamePlayer{}, "game_players").SetKeys(true, "Game_id", "Rank")
