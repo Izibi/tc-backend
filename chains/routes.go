@@ -83,32 +83,45 @@ func (svc *Service) Route(r gin.IRoutes) {
     if err != nil { r.Error(err); return }
     if team == nil { r.StringError("access denied"); return }
 
-    fmt.Printf("new title: %s\n", req.Title)
-    newChainId, err := svc.model.ForkChain(team.Id, oldChainId, req.Title)
-    if err != nil { r.Error(err); return }
+    var newChainId int64
+    err = svc.model.Transaction(c, func() (err error) {
 
-    /* Attempt to initialize a game on the new chain. */
-    newChain, err := svc.model.LoadChain(newChainId)
-    if err != nil { r.Error(err); return }
-    oldGame, err := svc.model.LoadGame(oldChain.Game_key)
-    if err == nil {
+      newChainId, err = svc.model.ForkChain(team.Id, oldChainId, req.Title)
+      if err != nil { return }
+
+      /* Initialize a game on the new chain. */
+      newChain, err := svc.model.LoadChain(newChainId)
+      if err != nil { return }
+      oldGame, err := svc.model.LoadGame(oldChain.Game_key)
+      if err != nil { return }
       block, err := svc.blockStore.ReadBlock(oldGame.Last_block)
-      if err == nil {
-        firstBlock := blocks.LastSetupBlock(oldGame.Last_block, block)
-        if firstBlock != "" {
-          gameParams := model.GameParams{
-            First_round: 0,
-            Nb_rounds: oldGame.Max_nb_rounds,
-            Nb_players: oldGame.Max_nb_players,
-            Cycles_per_round: oldGame.Nb_cycles_per_round,
-          }
-          gameKey, err := svc.model.CreateGame(newChain.Owner_id.Int64, firstBlock, gameParams)
-          if err == nil {
-            err = svc.model.SetChainGameKey(newChainId, gameKey)
-          }
-        }
+      if err != nil { return }
+      firstBlock := blocks.LastSetupBlock(oldGame.Last_block, block)
+      if firstBlock == "" { return fmt.Errorf("no setup block") }
+      // Read and parse the params from the setup block.
+      bsParams, err := svc.blockStore.ReadResource(firstBlock, "params.json")
+      if err != nil { return }
+      var setupParams struct {
+        NbCyclesPerRound uint32 `json:"cycles_per_round"`
+        Nb_players uint32 `json:"nb_players"`
+        Nb_rounds uint64 `json:"nb_rounds"`
       }
-    }
+      err = json.Unmarshal(bsParams, &setupParams)
+      if err != nil { return }
+      gameParams := model.GameParams{
+        First_round: 0,
+        Nb_rounds: setupParams.Nb_rounds,
+        Nb_players: setupParams.Nb_players,
+        Cycles_per_round: setupParams.NbCyclesPerRound,
+      }
+      gameKey, err := svc.model.CreateGame(newChain.Owner_id.Int64, firstBlock, gameParams)
+      if err != nil { return }
+      err = svc.model.SetChainGameKey(newChainId, gameKey)
+      if err != nil { return }
+      return nil
+
+    })
+    if err != nil { r.Error(err); return }
 
     /* XXX Temporary, post on team channel as chain is private */
     message := fmt.Sprintf("chain %s created", view.ExportId(newChainId))
