@@ -157,6 +157,9 @@ func (m *Model) CloseRound(gameKey string, teamId int64, currentBlock string) (*
   var game *Game
   game, err = m.loadGameForUpdate(gameKey)
   if err != nil { return nil, err }
+  if game.Current_round >= game.Max_nb_rounds {
+    return game, errors.New("game has ended")
+  }
   if game.Last_block != currentBlock {
     return game, errors.New("current block has changed")
   }
