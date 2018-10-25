@@ -5,6 +5,7 @@ import (
   "encoding/json"
   "fmt"
   "io"
+  "strings"
   "strconv"
   "time"
   "github.com/gin-gonic/gin"
@@ -25,7 +26,7 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
     if game == nil { r.StringError("bad key"); return }
     /* The hash of the last block is a convenient ETag value. */
     etag := fmt.Sprintf("\"%s\"", game.Last_block)
-    if c.GetHeader("If-None-Match") == etag {
+    if strings.Contains(c.GetHeader("If-None-Match"), etag) {
       c.Status(304)
       return
     }
