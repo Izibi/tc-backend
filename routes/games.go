@@ -31,15 +31,13 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
     }
     result := j.Object()
     result.Prop("game", ViewGame(game))
+    lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
+    if err != nil { r.Error(err); return }
+    result.Prop("page", j.Uint64(lastPage))
+    result.Prop("blocks", j.Raw(blocks))
     ps, err := svc.model.LoadRegisteredGamePlayer(game.Id)
     if err != nil { r.Error(err); return }
     result.Prop("players", ViewPlayers(ps))
-    if game != nil {
-      lastPage, blocks, err := svc.store.GetHeadIndex(game.Game_key, game.Last_block)
-      if err != nil { r.Error(err); return }
-      result.Prop("page", j.Uint64(lastPage))
-      result.Prop("blocks", j.Raw(blocks))
-    }
     c.Header("ETag", etag)
     c.Header("Cache-Control", "public, no-cache") // 1 day
     r.Result(result)
