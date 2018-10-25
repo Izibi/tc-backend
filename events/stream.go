@@ -167,9 +167,7 @@ func (svc *Service) getStream(key string) (*stream, error) {
     svc.mutex.RUnlock()
   }
   if !ok {
-    var err error
-    st, err = svc.resumeStream(key)
-    if err != nil { return nil, err }
+    return nil, errors.New("disconnected")
   }
   return st, nil
 }
