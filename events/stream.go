@@ -85,48 +85,53 @@ func (svc *Service) connectStream(key string, recvId string) (*stream, bool, err
     return st, false, nil
   }
   if !idleFound {
-    /* Atomically mark ourselves as the stream controller in redis. */
-    var serverUrl string
-    sKey := streamKey(key)
-    serverUrl, err = svc.redis.GetSet(sKey, svc.config.SelfUrl).Result()
-    if err != nil { return nil, false, errors.Wrap(err, 0) }
-    if serverUrl != svc.config.SelfUrl {
-      // TODO: tell serverUrl we are now controlling the stream
-      fmt.Printf("stream %s transfered from %s\n", key)
-    } else {
-      fmt.Printf("stream %s reconnected\n", key)
-    }
-    /* Reload subscriptions */
-    var subs []string
-    ssKey := streamSubscriptionsKey(key)
-    subs, err = svc.redis.SMembers(ssKey).Result()
-    if err != nil { return nil, false, errors.Wrap(err, 0) }
-    /* Rebuild the stream object. */
-    var lastId uint64
-    st = &stream{
-      svc: svc,
-      key: key,
-      idleSince: time.Now(),
-      serverUrl: svc.config.SelfUrl,
-      pubSub: svc.redis.Subscribe(append(subs, "system")...),
-      lastId: lastId,
-      recvId: 0,
-      userId: 0,
-      teamId: 0,
-      contestId: 0,
-      recent: nil,
-    }
-    {
-      svc.mutex.Lock()
-      svc.streams[key] = st
-      svc.mutex.Unlock()
-    }
+    st, err = svc.resumeStream(key)
+    if err != nil { return nil, false, err }
   }
   st.recvId, _ = strconv.ParseUint(recvId, 10, 64)
   if verbose {
     hi1.Printf("+ %s\n", key)
   }
   return st, true, nil
+}
+
+func (svc *Service) resumeStream(key string) (*stream, error) {
+  var err error
+  /* Atomically mark ourselves as the stream controller in redis. */
+  var serverUrl string
+  sKey := streamKey(key)
+  serverUrl, err = svc.redis.GetSet(sKey, svc.config.SelfUrl).Result()
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  if serverUrl != svc.config.SelfUrl {
+    // TODO: tell serverUrl we are now controlling the stream
+    fmt.Printf("stream %s transfered from %s\n", key)
+  } else {
+    fmt.Printf("stream %s reconnected\n", key)
+  }
+  /* Reload subscriptions */
+  var subs []string
+  ssKey := streamSubscriptionsKey(key)
+  subs, err = svc.redis.SMembers(ssKey).Result()
+  if err != nil { return nil, errors.Wrap(err, 0) }
+  /* Rebuild the stream object. */
+  var lastId uint64
+  st := &stream{
+    svc: svc,
+    key: key,
+    idleSince: time.Now(),
+    serverUrl: svc.config.SelfUrl,
+    pubSub: svc.redis.Subscribe(append(subs, "system")...),
+    lastId: lastId,
+    recvId: 0,
+    userId: 0,
+    teamId: 0,
+    contestId: 0,
+    recent: nil,
+  }
+  svc.mutex.Lock()
+  svc.streams[key] = st
+  svc.mutex.Unlock()
+  return st, nil
 }
 
 func (svc *Service) disconnectStream(st *stream) error {
@@ -156,16 +161,15 @@ func (svc *Service) getStream(key string) (*stream, error) {
   {
     svc.mutex.RLock()
     st, ok = svc.streams[key]
-    /* XXX How wrong is this wrong?  If the stream is idle there's no pubsub,
-       maybe the stream is handled by another server, maybe not...
     if !ok {
       st, ok = svc.idleStreams[key]
-    } */
+    }
     svc.mutex.RUnlock()
   }
   if !ok {
-    /* TODO: acquire control of the stream */
-    return nil, errors.New("not implemented")
+    var err error
+    st, err = svc.resumeStream(key)
+    if err != nil { return nil, err }
   }
   return st, nil
 }
