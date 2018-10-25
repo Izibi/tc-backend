@@ -38,6 +38,10 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
     ps, err := svc.model.LoadRegisteredGamePlayer(game.Id)
     if err != nil { r.Error(err); return }
     result.Prop("players", ViewPlayers(ps))
+    scores, err := svc.store.ReadResource(game.Last_block, "scores.txt")
+    if err == nil {
+      result.Prop("scores", j.String(string(scores)))
+    }
     c.Header("ETag", etag)
     c.Header("Cache-Control", "public, no-cache") // 1 day
     r.Result(result)
