@@ -2,6 +2,7 @@
 package routes
 
 import (
+  "errors"
   "github.com/gin-gonic/gin"
   "github.com/go-redis/redis"
   "tezos-contests.izibi.com/backend/auth"
@@ -40,8 +41,15 @@ func (svc *Service) RouteAll(r gin.IRoutes) {
   svc.RouteTeams(r)
 }
 
-func (svc *Service) SignedRequest(c *gin.Context, req interface{}) (*utils.Response, error) {
+func (svc *Service) signedRequest(c *gin.Context, req interface{}) (*utils.Response, error) {
   r := utils.NewResponse(c)
   err := utils.NewRequest(c, svc.config.ApiKey).Signed(req)
   return r, err
+}
+
+func (svc *Service) checkAuthor(author string) (int64, error) {
+  teamId, err := svc.model.FindTeamIdByKey(author[1:])
+  if err != nil { return 0, err }
+  if teamId == 0 { return 0, errors.New("team key is not recognized") }
+  return teamId, nil
 }

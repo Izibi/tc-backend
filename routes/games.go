@@ -1,8 +1,23 @@
+/*
+
+  Game API
+
+  Requests that need authentication are designed to be used by the tc-node
+  command line tool.
+  These requests must be signed with the team's private key and include the
+  team's public key (prefixed with '@') in the "author" request parameter.
+  This request format is inspired by secure-scuttlebutt messages.
+
+  Routes include the game key in the URL (in addition to the request) to
+  permit sharding games across multiple servers.
+
+*/
 
 package routes
 
 import (
   "encoding/json"
+  "errors"
   "fmt"
   "io"
   "strings"
@@ -16,16 +31,33 @@ import (
   j "tezos-contests.izibi.com/backend/jase"
 )
 
-func (svc *Service) RouteGames(r gin.IRoutes) {
+const (
+  GameApiRevision = 1 /* increment when the /Games/:gameKey response changes */
+)
 
-  r.GET("/Games/:gameKey", func (c *gin.Context) {
+/* Union of all game API requests (except creation) */
+type GameRequest struct {
+  Action string `json:"action"`
+  Author string `json:"author"`
+  BotIds []uint32 `json:"botIds"` /* "register bots", "ping" */
+  Commands string `json:"commands"` /* "enter commands" */
+  CurrentBlock string `json:"current_block"` /* "enter commands", "close round" */
+  GameKey string `json:"gameKey"` /* all */
+  Payload string `json:"payload"` /* "pong" */
+  Player uint32 `json:"player"` /* "enter commands" */
+  Timestamp string `json:"timestamp"` /* "ping", "pong" -- Unix time, milliseconds, as string */
+}
+
+func (svc *Service) RouteGames(routes gin.IRoutes) {
+
+  routes.GET("/Games/:gameKey", func (c *gin.Context) {
     r := utils.NewResponse(c)
     gameKey := c.Param("gameKey")
     game, err := svc.model.LoadGame(gameKey)
     if err != nil { r.Error(err); return }
     if game == nil { r.StringError("bad key"); return }
     /* The hash of the last block is a convenient ETag value. */
-    etag := fmt.Sprintf("\"%s\"", game.Last_block)
+    etag := fmt.Sprintf("\"%s %d\"", game.Last_block, GameApiRevision)
     if strings.Contains(c.GetHeader("If-None-Match"), etag) {
       c.Status(304)
       return
@@ -48,7 +80,9 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
     r.Result(result)
   })
 
-  r.GET("/Games/:gameKey/Index/:page", func (c *gin.Context) {
+  /* Consider: to avoid cache issues if the page size has to change, use a
+     range rather than a page number. */
+  routes.GET("/Games/:gameKey/Index/:page", func (c *gin.Context) {
     r := utils.NewResponse(c)
     gameKey := c.Param("gameKey")
     page, err := strconv.ParseUint(c.Param("page"), 10, 64)
@@ -65,17 +99,17 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
     r.Result(result)
   })
 
-  r.POST("/Games", func (c *gin.Context) {
+  routes.POST("/Games", func (c *gin.Context) {
     var req struct {
       Author string `json:"author"`
       FirstBlock string `json:"first_block"`
-      // TODO: add a nonce
+      Timestamp string `json:"timestamp"`
     }
-    r, err := svc.SignedRequest(c, &req)
+    r, err := svc.signedRequest(c, &req)
     if err != nil { r.Error(err); return }
-    ownerId, err := svc.model.FindTeamIdByKey(req.Author[1:])
-    if ownerId == 0 { r.StringError("team key is not recognized"); return }
+    teamId, err := svc.checkAuthor(req.Author)
     if err != nil { r.Error(err); return }
+    /* TODO: check that req.Timestamp is recent */
     // Read the requested first block.
     var block blocks.Block
     block, err = svc.store.ReadBlock(req.FirstBlock)
@@ -102,186 +136,52 @@ func (svc *Service) RouteGames(r gin.IRoutes) {
       Nb_players: setupParams.Nb_players,
       Cycles_per_round: setupParams.NbCyclesPerRound,
     }
-    gameKey, err := svc.model.CreateGame(ownerId, req.FirstBlock, gameParams)
+    var gameKey string
+    err = svc.model.Transaction(c, func () (err error) {
+      /* TODO: check that there is no game by the same team with created_at = req.Timestamp ? */
+      gameKey, err = svc.model.CreateGame(teamId, req.FirstBlock, gameParams)
+      return
+    })
     if err != nil { r.Error(err); return }
     game, err := svc.model.LoadGame(gameKey)
     if err != nil { r.Error(err); return }
     r.Result(ViewGame(game))
   })
 
-  r.POST("/Games/:gameKey/Register", func (c *gin.Context) {
-    var req struct {
-      Author string `json:"author"`
-      // TODO: put the game key here
-      Ids []uint32 `json:"ids"`
-    }
-    r, err := svc.SignedRequest(c, &req)
+  routes.POST("/Games/:gameKey", func (c *gin.Context) {
+    var req GameRequest
+    r, err := svc.signedRequest(c, &req)
     if err != nil { r.Error(err); return }
-    teamId, err := svc.model.FindTeamIdByKey(req.Author[1:])
+    teamId, err := svc.checkAuthor(req.Author)
     if err != nil { r.Error(err); return }
-    if teamId == 0 { r.StringError("team key is not recognized"); return }
-    gameKey := c.Param("gameKey")
-    var ranks []uint32
-    err = svc.model.Transaction(c, func () (err error) {
-      ranks, err = svc.model.RegisterGamePlayers(gameKey, teamId, req.Ids)
+    if req.GameKey != c.Param("gameKey") {
+      r.StringError("game key mismatch")
       return
-    })
-    if err != nil { r.Error(err); return }
-    res := j.Object()
-    jRanks := j.Array()
-    for _, n := range(ranks) {
-      jRanks.Item(j.Uint32(n))
     }
-    res.Prop("ranks", jRanks)
-    r.Result(res)
-  })
-
-  r.POST("/Games/:gameKey/Commands", func (c *gin.Context) {
-    var req struct {
-      Author string `json:"author"`
-      CurrentBlock string `json:"current_block"`
-      Player uint32 `json:"player"`
-      Commands string `json:"commands"`
+    // Some actions can only be performed by the game owner.
+    switch req.Action {
+    case "close round", "cancel_round", "ping":
+      ok, err := svc.model.IsGameOwner(req.GameKey, teamId)
+      if err != nil { r.Error(err); return }
+      if !ok { r.StringError("not game owner"); return }
     }
-    r, err := svc.SignedRequest(c, &req)
-    if err != nil { r.Error(err); return }
-    teamId, err := svc.model.FindTeamIdByKey(req.Author[1:])
-    if err != nil { r.Error(err); return }
-    if teamId == 0 { r.StringError("team key is not recognized"); return }
-    block, err := svc.store.ReadBlock(req.CurrentBlock)
-    if err != nil { r.Error(err); return }
-    cmds, err := svc.store.CheckCommands(block.Base(), req.Commands)
-    if err != nil { r.Error(err); return }
-    gameKey := c.Param("gameKey")
-    err = svc.model.Transaction(c, func () error {
-      return svc.model.SetPlayerCommands(gameKey, req.CurrentBlock, teamId, req.Player, cmds)
-    })
-    if err != nil { r.Error(err); return }
-    r.Result(j.Raw(cmds))
-  })
-
-  r.POST("/Games/:gameKey/CloseRound", func (c *gin.Context) {
-    var req struct {
-      Author string `json:"author"`
-      // TODO: put the game key here
-      CurrentBlock string `json:"current_block"`
-    }
-    r, err := svc.SignedRequest(c, &req)
-    if err != nil { r.Error(err); return }
-    teamId, err := svc.model.FindTeamIdByKey(req.Author[1:])
-    if err != nil { r.Error(err); return }
-    if teamId == 0 { r.StringError("team key is not recognized"); return }
-    gameKey := c.Param("gameKey")
-    var game *model.Game
-    err = svc.model.Transaction(c, func () (err error) {
-      game, err = svc.model.CloseRound(gameKey, teamId, req.CurrentBlock)
-      return err
-    })
-    if err != nil { r.Error(err); return }
-    go func () {
-      var err error
-      var newBlock string
-      newBlock, err = svc.store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
-      if err != nil { /* TODO: mark error in block */ return }
-      err = svc.store.ClearHeadIndex(gameKey)
-      if err != nil { /* TODO: mark error in block */ return }
-      err = svc.model.Transaction(c, func () (err error) {
-        _, err = svc.model.EndRoundAndUnlock(gameKey, newBlock)
-        if err != nil { /* TODO: mark error in block */ return }
-        return
-      })
-      if err != nil {
-        // TODO: post an error!
-      } else {
-        svc.events.PostGameMessage(gameKey, newBlockMessage(newBlock))
-      }
-    }()
-    res := j.Object()
-    res.Prop("commands", j.Raw(game.Next_block_commands))
-    r.Result(res)
-  })
-
-  r.POST("/Games/:gameKey/CancelRound", func (c *gin.Context) {
-    var req struct {
-      Author string `json:"author"`
-      GameKey string `json:"gameKey"`
-      CurrentBlock string `json:"currentBlock"`
-    }
-    r, err := svc.SignedRequest(c, &req)
-    if err != nil { r.Error(err); return }
-    err = svc.model.Transaction(c, func () (err error) {
-      _, err = svc.model.CancelRound(req.GameKey)
+    switch req.Action {
+    case "register bots":
+      gameRegisterBots(svc, c, r, &req, teamId)
+    case "enter commands":
+      gameEnterCommands(svc, c, r, &req, teamId)
+    case "close round":
+      gameCloseRound(svc, c, r, &req)
+    case "cancel_round":
+      gameCancelRound(svc, c, r, &req)
+    case "ping":
+      gamePing(svc, c, r, &req)
+    case "pong":
+      gamePong(svc, c, r, &req)
+    default:
+      r.StringError("bad action")
       return
-    })
-    if err != nil { r.Error(err); return }
-    r.Result(j.Null)
-  })
-
-  r.POST("/Games/:gameKey/Ping", func (c *gin.Context) {
-    // TODO: this request should be signed
-    var err error
-    var keys []string
-    keys, err = svc.model.LoadGamePlayerTeamKeys(c.Param("gameKey"))
-    if err != nil { c.String(400, "failed to load players"); return }
-    key, err := utils.NewKey()
-    if err != nil { c.String(500, "failed to generate a key"); return }
-    sub := svc.rc.Subscribe(fmt.Sprintf("ping:%s", key))
-    svc.events.PostGameMessage(c.Param("gameKey"), newPingMessage(key))
-    timeout := time.NewTimer(1 * time.Second)
-    ch := sub.Channel()
-    responders := make(map[string]bool)
-    nbExpected := len(keys)
-    for _, key := range keys {
-      responders["@"+key] = false
     }
-    c.Stream(func (w io.Writer) bool {
-      for {
-        select {
-        case <-timeout.C:
-          w.Write([]byte("timeout\n"))
-          sub.Close()
-          return false
-        case m := <-ch:
-          if m == nil {
-            w.Write([]byte("pubsub error\n"))
-            timeout.Stop()
-            sub.Close()
-            return false
-          }
-          identity := m.Payload
-          received, expected := responders[identity]
-          if !expected {
-            w.Write([]byte(fmt.Sprintf("unexpected %s\n", identity)))
-            return true
-          }
-          if received {
-            w.Write([]byte(fmt.Sprintf("duplicate %s\n", identity)))
-            return true
-          }
-          w.Write([]byte(fmt.Sprintf("received %s\n", identity)))
-          responders[m.Payload] = true
-          nbExpected -= 1
-          if nbExpected == 0 {
-            w.Write([]byte("OK\n"))
-            timeout.Stop()
-            sub.Close()
-            return false
-          }
-          return true
-        }
-      }
-    })
-  })
-
-  r.POST("/Games/:gameKey/Pong", func (c *gin.Context) {
-    var req struct {
-      Author string `json:"author"`
-      Payload string `json:"payload"`
-    }
-    r, err := svc.SignedRequest(c, &req)
-    if err != nil { r.Error(err); return }
-    svc.rc.Publish(fmt.Sprintf("ping:%s", req.Payload), req.Author)
-    r.Result(j.Boolean(true))
   })
 
 }
@@ -324,10 +224,223 @@ func ViewPlayers(players []model.RegisteredGamePlayer) j.Value {
   return items
 }
 
-func newPingMessage(payload string) string {
-  return fmt.Sprintf("ping %s", payload)
+func gameRegisterBots(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest, teamId int64) {
+  var err error
+  var ranks []uint32
+  err = svc.model.Transaction(c, func () (err error) {
+    ranks, err = svc.model.RegisterGamePlayers(req.GameKey, teamId, req.BotIds)
+    return
+  })
+  if err != nil { r.Error(err); return }
+  res := j.Object()
+  jRanks := j.Array()
+  for _, n := range(ranks) {
+    jRanks.Item(j.Uint32(n))
+  }
+  res.Prop("ranks", jRanks)
+  r.Result(res)
+}
+
+func gameEnterCommands(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest, teamId int64) {
+  var err error
+  block, err := svc.store.ReadBlock(req.CurrentBlock)
+  if err != nil { r.Error(err); return }
+  cmds, err := svc.store.CheckCommands(block.Base(), req.Commands)
+  if err != nil { r.Error(err); return }
+  err = svc.model.Transaction(c, func () error {
+    return svc.model.SetPlayerCommands(req.GameKey, req.CurrentBlock, teamId, req.Player, cmds)
+  })
+  if err != nil { r.Error(err); return }
+  r.Result(j.Raw(cmds))
+}
+
+func gameCloseRound(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest) {
+  var err error
+  var game *model.Game
+  err = svc.model.Transaction(c, func () (err error) {
+    game, err = svc.model.CloseRound(req.GameKey, req.CurrentBlock)
+    return err
+  })
+  if err != nil { r.Error(err); return }
+  go func () {
+    /* XXX the game will not unlock if the backend crashes before this routine completes */
+    var err error
+    var newBlock string
+    newBlock, err = svc.store.MakeCommandBlock(game.Last_block, game.Next_block_commands)
+    if err != nil { /* TODO: mark error in block */ return }
+    err = svc.store.ClearHeadIndex(req.GameKey)
+    if err != nil { /* TODO: mark error in block */ return }
+    err = svc.model.Transaction(c, func () (err error) {
+      _, err = svc.model.EndRoundAndUnlock(req.GameKey, newBlock)
+      if err != nil { /* TODO: mark error in block */ return }
+      return
+    })
+    if err != nil {
+      // TODO: post an error!
+    } else {
+      svc.events.PostGameMessage(req.GameKey, newBlockMessage(newBlock))
+    }
+  }()
+  res := j.Object()
+  res.Prop("commands", j.Raw(game.Next_block_commands))
+  r.Result(res)
+}
+
+func gameCancelRound(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest) {
+  var err error
+  if err != nil { r.Error(err); return }
+  err = svc.model.Transaction(c, func () (err error) {
+    _, err = svc.model.CancelRound(req.GameKey)
+    return
+  })
+  if err != nil { r.Error(err); return }
+  r.Result(j.Null)
+}
+
+func gamePing(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest) {
+  var err error
+  var pingTime time.Time
+  pingTime, err = parseUnixMillis(req.Timestamp)
+  if err != nil { r.Error(err); return }
+  // TODO: verify pingTime is recent enough
+  var bots []model.GamePlayerId
+  bots, err = svc.model.LoadGamePlayerIds(req.GameKey)
+  if err != nil { r.Error(err); return }
+  key, err := utils.NewKey()
+  if err != nil { r.StringError("failed to generate a key"); return }
+  sub := svc.rc.Subscribe(pingChannel(key))
+  var message = fmt.Sprintf("ping %s", key)
+  svc.events.PostGameMessage(req.GameKey, message)
+  var timeout = time.NewTimer(2 * time.Second)
+  var ch = sub.Channel()
+  var nbExpected = len(bots)
+  var received = make([]bool, nbExpected, nbExpected)
+  c.Header("Content-Type", "text/event-stream")
+  c.Header("X-Accel-Buffering", "no")
+  var started bool
+  c.Stream(func (w io.Writer) bool {
+    var err error
+    if !started {
+      /* Write an initial body line to force sending headers. */
+      started = true
+      w.Write([]byte("START\n"))
+      return true
+    }
+    for {
+      select {
+      case <-timeout.C: {
+        for i := range bots {
+          if !received[i] {
+            bot := &bots[i]
+            w.Write([]byte(fmt.Sprintf("timeout %d %s %d\n", bot.Rank, bot.Team_key, bot.Bot_id)))
+          }
+        }
+        w.Write([]byte("ERROR\n"))
+        sub.Close()
+        return false
+      }
+      case m := <-ch:
+        if m == nil {
+          w.Write([]byte("pubsub error\n"))
+          timeout.Stop()
+          sub.Close()
+          return false
+        }
+        // expect payload of form "@key tsUnixMs botId(,botId)*"
+        var msg *PongMessage
+        msg, err = DecodePongMessage(m.Payload)
+        if err != nil {
+          fmt.Printf("Bad pong message: %v\n  message: %s\n", err, m.Payload)
+          return true
+        }
+        var pongTime time.Time
+        pongTime, err = parseUnixMillis(msg.Timestamp)
+        if err != nil {
+          fmt.Printf("Bad pong message: %v\n  message: %s\n", err, m.Payload)
+          return true
+        }
+        millis := pongTime.Sub(pingTime).Nanoseconds() / 1000000
+        for _, botId := range msg.BotIds {
+          for i := range bots {
+            bot := &bots[i]
+            if bot.Team_key == msg.TeamKey && bot.Bot_id == botId && !received[i] {
+              w.Write([]byte(fmt.Sprintf("pong %d %s %d %d\n", bot.Rank, bot.Team_key, bot.Bot_id, millis)))
+              received[i] = true
+              nbExpected -= 1
+            }
+          }
+        }
+        if nbExpected == 0 {
+          w.Write([]byte("OK\n"))
+          timeout.Stop()
+          sub.Close()
+          return false
+        }
+        return true
+      }
+    }
+  })
+}
+
+func gamePong(svc *Service, c *gin.Context, r *utils.Response, req *GameRequest) {
+  message := PongMessage{req.Timestamp, req.Author[1:], req.BotIds}
+  svc.rc.Publish(pingChannel(req.Payload), message.Encode())
+  r.Result(j.Boolean(true))
 }
 
 func newBlockMessage(hash string) string {
   return fmt.Sprintf("block %s", hash)
+}
+
+func pingChannel(key string) string {
+  return fmt.Sprintf("ping:%s", key)
+}
+
+type PongMessage struct {
+  Timestamp string
+  TeamKey string
+  BotIds []uint32
+}
+
+func (m *PongMessage) Encode() string {
+  ids := make([]string, len(m.BotIds))
+  for i, id := range m.BotIds {
+    ids[i] = strconv.FormatInt(int64(id), 10)
+  }
+  return strings.Join([]string{
+    m.Timestamp,
+    m.TeamKey,
+    strings.Join(ids, ","),
+  }, " ")
+}
+
+func DecodePongMessage(msg string) (*PongMessage, error) {
+  var err error
+  parts := strings.Split(msg, " ")
+  if len(parts) != 3 {
+    return nil, errors.New("bad pong message")
+  }
+  timestamp := parts[0]
+  teamKey := parts[1]
+  strIds := strings.Split(parts[2], ",")
+  ids := make([]uint32, len(strIds))
+  for i, strId := range strIds {
+    var id uint64
+    id, err = strconv.ParseUint(strId, 10, 32)
+    if err != nil { return nil, err }
+    ids[i] = uint32(id)
+  }
+  return &PongMessage{
+    Timestamp: timestamp,
+    TeamKey: teamKey,
+    BotIds: ids,
+  }, nil
+}
+
+func parseUnixMillis(s string) (t time.Time, err error) {
+  var millis int64
+  millis, err = strconv.ParseInt(s, 10, 64)
+  if err != nil { return }
+  t = time.Unix(millis / 1000, (millis % 1000) * 1000000)
+  return
 }
